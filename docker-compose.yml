@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: gymos_db
+    restart: always
+    environment:
+      - POSTGRES_USER=gymos_user
+      - POSTGRES_PASSWORD=verysecretpassword
+      - POSTGRES_DB=gymos_db
+    ports:
+      - '5432:5432'
+    volumes:
+      - gymos_data:/var/lib/postgresql/data
+
+volumes:
+  gymos_data:
