@@ -1,5 +1,9 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl"]
 }
 
 datasource db {
@@ -7,32 +11,314 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Core & User Management
+
 model Gym {
-  id            Int      @id @default(autoincrement())
-  name          String   @unique
-  logoUrl       String?
-  primaryColor  String?
-  createdAt     DateTime @default(now())
-  users         User[]
+  id            String    @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String    @unique
+  address       String?   @db.Text
+  contactPhone  String?   @map("contact_phone")
+  logoUrl       String?   @map("logo_url")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  roles              Role[]
+  users              User[]
+  trainerMatches     TrainerMatch[]
+  exercises          Exercise[]
+  workoutPrograms    WorkoutProgram[]
+  equipments         Equipment[]
+  productCategories  ProductCategory[]
+  products           Product[]
+  orders             Order[]
+
+  @@map("gyms")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String
+  gymId       String    @map("gym_id") @db.Uuid
+  permissions Json?     @db.JsonB
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  gym   Gym    @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  users User[]
+
+  @@unique([gymId, name])
+  @@map("roles")
 }
 
 model User {
-  id            Int      @id @default(autoincrement())
-  email         String   @unique
-  password      String
-  name          String?
-  role          Role     @default(MEMBER)
-  createdAt     DateTime @default(now())
-  gym           Gym?     @relation(fields: [gymId], references: [id])
-  gymId         Int?
+  id           String    @id @default(uuid()) @db.Uuid
+  gymId        String    @map("gym_id") @db.Uuid
+  roleId       String    @map("role_id") @db.Uuid
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  phone        String?
+  avatarUrl    String?   @map("avatar_url")
+  birthDate    DateTime? @map("birth_date") @db.Date
+  gender       String?
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
 
-  // Constraint: SUPER_ADMIN dışındaki roller gymId'ye sahip olmalı
+  // Relations
+  gym                   Gym                 @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  role                  Role                @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  measurements          UserMeasurement[]
+  trainerMatchesAsTrainer TrainerMatch[]    @relation("TrainerMatches")
+  trainerMatchesAsStudent TrainerMatch[]    @relation("StudentMatches")
+  createdPrograms       WorkoutProgram[]    @relation("ProgramCreator")
+  assignedPrograms      WorkoutProgram[]    @relation("ProgramAssignee")
+  workoutLogs           WorkoutLog[]
+  orders                Order[]
+
   @@map("users")
 }
 
-enum Role {
-  SUPER_ADMIN
-  OWNER
-  COACH
-  MEMBER
+model UserMeasurement {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  weight            Float?
+  height            Float?
+  bodyFatPercentage Float?    @map("body_fat_percentage")
+  muscleMass        Float?    @map("muscle_mass")
+  measuredAt        DateTime  @default(now()) @map("measured_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_measurements")
+}
+
+// Training & Workout System
+
+model TrainerMatch {
+  id        String    @id @default(uuid()) @db.Uuid
+  gymId     String    @map("gym_id") @db.Uuid
+  trainerId String    @map("trainer_id") @db.Uuid
+  studentId String    @map("student_id") @db.Uuid
+  status    String    @default("pending") // 'active', 'pending', 'ended'
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  gym     Gym  @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  trainer User @relation("TrainerMatches", fields: [trainerId], references: [id], onDelete: Cascade)
+  student User @relation("StudentMatches", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([trainerId, studentId])
+  @@map("trainer_matches")
+}
+
+model Exercise {
+  id                String    @id @default(uuid()) @db.Uuid
+  gymId             String    @map("gym_id") @db.Uuid
+  name              String
+  description       String?   @db.Text
+  videoUrl          String?   @map("video_url")
+  targetMuscleGroup String?   @map("target_muscle_group")
+  equipmentNeededId String?   @map("equipment_needed_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
+
+  // Relations
+  gym              Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  equipment        Equipment?        @relation(fields: [equipmentNeededId], references: [id], onDelete: SetNull)
+  programExercises ProgramExercise[]
+  workoutLogEntries WorkoutLogEntry[]
+
+  @@map("exercises")
+}
+
+model WorkoutProgram {
+  id              String    @id @default(uuid()) @db.Uuid
+  gymId           String    @map("gym_id") @db.Uuid
+  creatorId       String    @map("creator_id") @db.Uuid
+  assignedUserId  String?   @map("assigned_user_id") @db.Uuid
+  name            String
+  description     String?   @db.Text
+  difficultyLevel String    @default("Beginner") @map("difficulty_level") // 'Beginner', 'Intermediate', 'Advanced'
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Relations
+  gym              Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  creator          User              @relation("ProgramCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  assignedUser     User?             @relation("ProgramAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  programExercises ProgramExercise[]
+  workoutLogs      WorkoutLog[]
+
+  @@map("workout_programs")
+}
+
+model ProgramExercise {
+  id              String    @id @default(uuid()) @db.Uuid
+  programId       String    @map("program_id") @db.Uuid
+  exerciseId      String    @map("exercise_id") @db.Uuid
+  orderIndex      Int       @map("order_index")
+  sets            Int
+  reps            String // String to allow ranges like "10-12"
+  restTimeSeconds Int?      @map("rest_time_seconds")
+  notes           String?   @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  // Relations
+  program  WorkoutProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  exercise Exercise       @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@map("program_exercises")
+}
+
+model WorkoutLog {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  programId String    @map("program_id") @db.Uuid
+  startedAt DateTime  @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz(6)
+  notes     String?   @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program WorkoutProgram    @relation(fields: [programId], references: [id], onDelete: Cascade)
+  entries WorkoutLogEntry[]
+
+  @@map("workout_logs")
+}
+
+model WorkoutLogEntry {
+  id            String    @id @default(uuid()) @db.Uuid
+  workoutLogId  String    @map("workout_log_id") @db.Uuid
+  exerciseId    String    @map("exercise_id") @db.Uuid
+  setNumber     Int       @map("set_number")
+  weightKg      Float?    @map("weight_kg")
+  repsCompleted Int       @map("reps_completed")
+  rpe           Int? // Rate of Perceived Exertion (1-10)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  workoutLog WorkoutLog @relation(fields: [workoutLogId], references: [id], onDelete: Cascade)
+  exercise   Exercise   @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+
+  @@map("workout_log_entries")
+}
+
+// Equipment & QR System
+
+model Equipment {
+  id          String    @id @default(uuid()) @db.Uuid
+  gymId       String    @map("gym_id") @db.Uuid
+  name        String
+  description String?   @db.Text
+  qrCodeUuid  String    @unique @default(uuid()) @map("qr_code_uuid") @db.Uuid
+  videoUrl    String?   @map("video_url")
+  status      String    @default("active") // 'active', 'maintenance', 'broken'
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  gym       Gym        @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  exercises Exercise[]
+
+  @@map("equipments")
+}
+
+// Marketplace (Pre-Order) System
+
+model ProductCategory {
+  id        String    @id @default(uuid()) @db.Uuid
+  gymId     String    @map("gym_id") @db.Uuid
+  name      String
+  imageUrl  String?   @map("image_url")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  gym      Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@map("product_categories")
+}
+
+model Product {
+  id            String    @id @default(uuid()) @db.Uuid
+  gymId         String    @map("gym_id") @db.Uuid
+  categoryId    String    @map("category_id") @db.Uuid
+  name          String
+  description   String?   @db.Text
+  imageUrl      String?   @map("image_url")
+  price         Decimal   @db.Decimal(10, 2)
+  stockQuantity Int       @default(0) @map("stock_quantity")
+  isActive      Boolean   @default(true) @map("is_active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  // Relations
+  gym        Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  category   ProductCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@map("products")
+}
+
+model Order {
+  id          String    @id @default(uuid()) @db.Uuid
+  gymId       String    @map("gym_id") @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  orderNumber String    @unique @map("order_number")
+  totalAmount Decimal   @map("total_amount") @db.Decimal(10, 2)
+  status      String    @default("pending_approval") // 'pending_approval', 'prepared', 'completed', 'cancelled'
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  gym   Gym         @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items OrderItem[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String    @id @default(uuid()) @db.Uuid
+  orderId   String    @map("order_id") @db.Uuid
+  productId String    @map("product_id") @db.Uuid
+  quantity  Int
+  unitPrice Decimal   @map("unit_price") @db.Decimal(10, 2)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
 }

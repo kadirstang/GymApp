@@ -1,18 +1,54 @@
-version: '3.8'
-
 services:
+  # PostgreSQL Database
   db:
     image: postgres:16-alpine
-    container_name: gymos_db
-    restart: always
+    container_name: gymapp_db
+    restart: unless-stopped
     environment:
-      - POSTGRES_USER=gymos_user
-      - POSTGRES_PASSWORD=verysecretpassword
-      - POSTGRES_DB=gymos_db
+      POSTGRES_USER: ${DB_USER:-gymapp}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-gymapp123}
+      POSTGRES_DB: ${DB_NAME:-gymapp_db}
     ports:
-      - '5432:5432'
+      - "${DB_PORT:-5432}:5432"
     volumes:
-      - gymos_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - gymapp_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-gymapp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Node.js Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gymapp_backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: ${BACKEND_PORT:-3000}
+      DATABASE_URL: postgresql://${DB_USER:-gymapp}:${DB_PASSWORD:-gymapp123}@db:5432/${DB_NAME:-gymapp_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - gymapp_network
+    command: npm run dev
 
 volumes:
-  gymos_data:
+  postgres_data:
+    driver: local
+
+networks:
+  gymapp_network:
+    driver: bridge
