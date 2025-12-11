@@ -53,6 +53,13 @@ export const getExercises = async (req: Request, res: Response) => {
               name: true,
               status: true
             }
+          },
+          creator: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true
+            }
           }
         }
       }),
@@ -60,7 +67,7 @@ export const getExercises = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      exercises,
+      items: exercises,
       pagination: {
         total,
         page,
@@ -122,7 +129,7 @@ export const getExerciseById = async (req: Request, res: Response) => {
  */
 export const createExercise = async (req: Request, res: Response) => {
   try {
-    const { gymId } = req.user!;
+    const { gymId, userId } = req.user!;
     const {
       name,
       description,
@@ -162,6 +169,7 @@ export const createExercise = async (req: Request, res: Response) => {
     const exercise = await prisma.exercise.create({
       data: {
         gymId,
+        createdBy: userId,
         name,
         description,
         videoUrl,
@@ -191,7 +199,7 @@ export const createExercise = async (req: Request, res: Response) => {
  */
 export const updateExercise = async (req: Request, res: Response) => {
   try {
-    const { gymId } = req.user!;
+    const { gymId, userId, role } = req.user!;
     const { id } = req.params;
     const {
       name,
@@ -212,6 +220,11 @@ export const updateExercise = async (req: Request, res: Response) => {
 
     if (!existingExercise) {
       return errorResponse(res, 'Exercise not found', 404);
+    }
+
+    // Permission check: Trainers can only edit their own exercises
+    if (role.name === 'Trainer' && existingExercise.createdBy !== userId) {
+      return errorResponse(res, 'You can only edit exercises created by you', 403);
     }
 
     // Verify equipment belongs to same gym if provided
@@ -277,7 +290,7 @@ export const updateExercise = async (req: Request, res: Response) => {
  */
 export const deleteExercise = async (req: Request, res: Response) => {
   try {
-    const { gymId } = req.user!;
+    const { gymId, userId, role } = req.user!;
     const { id } = req.params;
 
     // Check if exercise exists and belongs to gym
@@ -286,13 +299,6 @@ export const deleteExercise = async (req: Request, res: Response) => {
         id,
         gymId,
         deletedAt: null
-      },
-      include: {
-        _count: {
-          select: {
-            programExercises: true
-          }
-        }
       }
     });
 
@@ -300,11 +306,26 @@ export const deleteExercise = async (req: Request, res: Response) => {
       return errorResponse(res, 'Exercise not found', 404);
     }
 
-    // Check if exercise is used in any programs
-    if (exercise._count.programExercises > 0) {
+    // Permission check: Trainers can only delete their own exercises
+    if (role.name === 'Trainer' && exercise.createdBy !== userId) {
+      return errorResponse(res, 'You can only delete exercises created by you', 403);
+    }
+
+    // Check if exercise is used in any active (non-deleted) programs
+    const activeProgramExercises = await prisma.programExercise.count({
+      where: {
+        exerciseId: id,
+        deletedAt: null,
+        program: {
+          deletedAt: null
+        }
+      }
+    });
+
+    if (activeProgramExercises > 0) {
       return errorResponse(
         res,
-        `Cannot delete exercise. It is used in ${exercise._count.programExercises} workout program(s)`,
+        `Cannot delete exercise. It is used in ${activeProgramExercises} active workout program(s)`,
         400
       );
     }

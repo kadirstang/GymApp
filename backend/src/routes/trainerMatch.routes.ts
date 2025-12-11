@@ -10,10 +10,38 @@ import {
   updateMatchStatus,
   endMatch,
   getTrainerStudents,
-  getStudentTrainer
+  getStudentTrainer,
+  getMyStudentsDetailed,
+  getMyStudentDetail
 } from '../controllers/trainerMatch.controller';
 
 const router = express.Router();
+
+/**
+ * @route   GET /api/trainer-matches/my-students
+ * @desc    Get trainer's students with detailed statistics (for My Students page)
+ * @access  Private (Trainer only)
+ */
+router.get(
+  '/my-students',
+  authenticate,
+  getMyStudentsDetailed
+);
+
+/**
+ * @route   GET /api/trainer-matches/my-students/:studentId
+ * @desc    Get detailed student info for trainer
+ * @access  Private (Trainer only)
+ */
+router.get(
+  '/my-students/:studentId',
+  authenticate,
+  [
+    param('studentId').isUUID().withMessage('Invalid student ID')
+  ],
+  handleValidationErrors,
+  getMyStudentDetail
+);
 
 /**
  * @route   GET /api/trainer-matches/trainer/:trainerId/students

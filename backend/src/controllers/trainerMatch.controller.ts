@@ -64,7 +64,7 @@ export const getMatches = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      matches,
+      items: matches,
       pagination: {
         total,
         page: Number(page),
@@ -149,6 +149,8 @@ export const createMatch = async (req: Request, res: Response) => {
     const { trainerId, studentId } = req.body;
     const user = (req as any).user;
 
+    console.log('Creating trainer match:', { trainerId, studentId, gymId: user.gymId });
+
     // Verify trainer exists and belongs to gym
     const trainer = await prisma.user.findFirst({
       where: {
@@ -162,6 +164,8 @@ export const createMatch = async (req: Request, res: Response) => {
         }
       }
     });
+
+    console.log('Trainer found:', trainer ? { id: trainer.id, role: trainer.role.name } : 'NOT FOUND');
 
     if (!trainer) {
       return errorResponse(res, 'Trainer not found', 404);
@@ -184,6 +188,8 @@ export const createMatch = async (req: Request, res: Response) => {
         }
       }
     });
+
+    console.log('Student found:', student ? { id: student.id, role: student.role.name } : 'NOT FOUND');
 
     if (!student) {
       return errorResponse(res, 'Student not found', 404);
@@ -483,5 +489,212 @@ export const getStudentTrainer = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching student trainer:', error);
     return errorResponse(res, 'Failed to fetch student trainer', 500);
+  }
+};
+
+/**
+ * Get trainer's students with detailed statistics (for My Students page)
+ * GET /api/trainer-matches/my-students
+ */
+export const getMyStudentsDetailed = async (req: Request, res: Response) => {
+  try {
+    const { userId } = (req as any).user;
+
+    console.log('Fetching students for trainer:', userId);
+
+    const matches = await prisma.trainerMatch.findMany({
+      where: {
+        trainerId: userId,
+        status: 'active',
+        deletedAt: null,
+      },
+      include: {
+        student: {
+          include: {
+            assignedPrograms: {
+              where: { deletedAt: null },
+              select: {
+                id: true,
+                name: true,
+                difficultyLevel: true,
+              },
+              take: 1,
+            },
+            workoutLogs: {
+              where: {
+                deletedAt: null,
+                startedAt: {
+                  gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // Last 30 days
+                },
+              },
+              select: {
+                id: true,
+                startedAt: true,
+                endedAt: true,
+              },
+              orderBy: { startedAt: 'desc' },
+            },
+            measurements: {
+              where: { deletedAt: null },
+              orderBy: { measuredAt: 'desc' },
+              take: 1,
+            },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    console.log('Found matches:', matches.length);
+
+    // Calculate statistics for each student
+    const studentsWithStats = matches.map(match => {
+      const student = match.student;
+      const lastWorkout = student.workoutLogs[0];
+      const lastWorkoutDate = lastWorkout?.startedAt;
+      const monthlyWorkouts = student.workoutLogs.length;
+
+      // Consider active if worked out in last 7 days
+      const isActive = lastWorkoutDate &&
+        (Date.now() - new Date(lastWorkoutDate).getTime()) < 7 * 24 * 60 * 60 * 1000;
+
+      return {
+        id: student.id,
+        firstName: student.firstName,
+        lastName: student.lastName,
+        email: student.email,
+        phone: student.phone,
+        avatarUrl: student.avatarUrl,
+        lastWorkoutDate,
+        assignedProgram: student.assignedPrograms[0] || null,
+        monthlyWorkouts,
+        isActive: !!isActive,
+        latestMeasurement: student.measurements[0] || null,
+        matchedAt: match.createdAt,
+      };
+    });
+
+    // Calculate overall stats
+    const totalStudents = studentsWithStats.length;
+    const activeStudents = studentsWithStats.filter(s => s.isActive).length;
+    const totalWorkouts = studentsWithStats.reduce((sum, s) => sum + s.monthlyWorkouts, 0);
+    const avgWorkoutsPerWeek = totalStudents > 0
+      ? (totalWorkouts / totalStudents) * (7 / 30)
+      : 0;
+
+    return successResponse(res, {
+      items: studentsWithStats,
+      stats: {
+        total: totalStudents,
+        active: activeStudents,
+        avgWorkoutsPerWeek: parseFloat(avgWorkoutsPerWeek.toFixed(1)),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching my students:', error);
+    return errorResponse(res, 'Failed to fetch students', 500);
+  }
+};
+
+/**
+ * Get detailed student info for trainer (for student detail page)
+ * GET /api/trainer-matches/my-students/:studentId
+ */
+export const getMyStudentDetail = async (req: Request, res: Response) => {
+  try {
+    const { userId } = (req as any).user;
+    const { studentId } = req.params;
+
+    // Verify trainer-student relationship
+    const match = await prisma.trainerMatch.findFirst({
+      where: {
+        trainerId: userId,
+        studentId,
+        status: 'active',
+        deletedAt: null,
+      },
+    });
+
+    if (!match) {
+      return errorResponse(res, 'Student not found or not assigned to you', 404);
+    }
+
+    // Get detailed student information
+    const student = await prisma.user.findFirst({
+      where: {
+        id: studentId,
+        deletedAt: null,
+      },
+      include: {
+        role: {
+          select: { name: true },
+        },
+        assignedPrograms: {
+          where: { deletedAt: null },
+          include: {
+            creator: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+          },
+        },
+        workoutLogs: {
+          where: { deletedAt: null },
+          orderBy: { startedAt: 'desc' },
+          take: 30,
+          include: {
+            program: {
+              select: {
+                name: true,
+              },
+            },
+            _count: {
+              select: { entries: true },
+            },
+          },
+        },
+        measurements: {
+          where: { deletedAt: null },
+          orderBy: { measuredAt: 'desc' },
+          take: 10,
+        },
+        orders: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 10,
+          select: {
+            id: true,
+            orderNumber: true,
+            totalAmount: true,
+            status: true,
+            createdAt: true,
+            items: {
+              include: {
+                product: {
+                  select: {
+                    name: true,
+                    imageUrl: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!student) {
+      return errorResponse(res, 'Student not found', 404);
+    }
+
+    return successResponse(res, {
+      ...student,
+      matchedAt: match.createdAt,
+    });
+  } catch (error) {
+    console.error('Error fetching student detail:', error);
+    return errorResponse(res, 'Failed to fetch student details', 500);
   }
 };

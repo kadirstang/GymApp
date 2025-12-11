@@ -78,6 +78,7 @@ model User {
   measurements          UserMeasurement[]
   trainerMatchesAsTrainer TrainerMatch[]    @relation("TrainerMatches")
   trainerMatchesAsStudent TrainerMatch[]    @relation("StudentMatches")
+  createdExercises      Exercise[]        @relation("ExerciseCreator")
   createdPrograms       WorkoutProgram[]    @relation("ProgramCreator")
   assignedPrograms      WorkoutProgram[]    @relation("ProgramAssignee")
   workoutLogs           WorkoutLog[]
@@ -128,6 +129,7 @@ model TrainerMatch {
 model Exercise {
   id                String    @id @default(uuid()) @db.Uuid
   gymId             String    @map("gym_id") @db.Uuid
+  createdBy         String?   @map("created_by") @db.Uuid
   name              String
   description       String?   @db.Text
   videoUrl          String?   @map("video_url")
@@ -139,6 +141,7 @@ model Exercise {
 
   // Relations
   gym              Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  creator          User?             @relation("ExerciseCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   equipment        Equipment?        @relation(fields: [equipmentNeededId], references: [id], onDelete: SetNull)
   programExercises ProgramExercise[]
   workoutLogEntries WorkoutLogEntry[]
@@ -154,6 +157,7 @@ model WorkoutProgram {
   name            String
   description     String?   @db.Text
   difficultyLevel String    @default("Beginner") @map("difficulty_level") // 'Beginner', 'Intermediate', 'Advanced'
+  isPublic        Boolean   @default(false) @map("is_public") // true: everyone can see, false: only creator
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")

@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
  */
 export const getPrograms = async (req: Request, res: Response) => {
   try {
-    const { gymId } = req.user!;
+    const { gymId, userId } = req.user!;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
@@ -24,6 +24,11 @@ export const getPrograms = async (req: Request, res: Response) => {
     const where: any = {
       gymId,
       deletedAt: null,
+      // Show only: programs created by user OR public programs
+      OR: [
+        { creatorId: userId },
+        { isPublic: true }
+      ]
     };
 
     if (search) {
@@ -80,7 +85,7 @@ export const getPrograms = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      programs,
+      items: programs,
       pagination: {
         total,
         page,
@@ -165,7 +170,7 @@ export const getProgramById = async (req: Request, res: Response) => {
 export const createProgram = async (req: Request, res: Response) => {
   try {
     const { gymId, userId } = req.user!;
-    const { name, description, difficultyLevel, assignedUserId } = req.body;
+    const { name, description, difficultyLevel, assignedUserId, isPublic } = req.body;
 
     // If assigning to a user, verify they belong to the same gym
     if (assignedUserId) {
@@ -190,6 +195,7 @@ export const createProgram = async (req: Request, res: Response) => {
         description,
         difficultyLevel: difficultyLevel || 'Beginner',
         assignedUserId: assignedUserId || null,
+        isPublic: isPublic || false,
       },
       include: {
         creator: {
@@ -225,7 +231,7 @@ export const updateProgram = async (req: Request, res: Response) => {
   try {
     const { gymId } = req.user!;
     const { id } = req.params;
-    const { name, description, difficultyLevel, assignedUserId } = req.body;
+    const { name, description, difficultyLevel, assignedUserId, isPublic } = req.body;
 
     // Check if program exists and belongs to gym
     const existingProgram = await prisma.workoutProgram.findFirst({
@@ -262,6 +268,7 @@ export const updateProgram = async (req: Request, res: Response) => {
     if (description !== undefined) updateData.description = description;
     if (difficultyLevel !== undefined) updateData.difficultyLevel = difficultyLevel;
     if (assignedUserId !== undefined) updateData.assignedUserId = assignedUserId;
+    if (isPublic !== undefined) updateData.isPublic = isPublic;
 
     const program = await prisma.workoutProgram.update({
       where: { id },

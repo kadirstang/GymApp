@@ -9,7 +9,7 @@ const prisma = new PrismaClient();
  */
 export const getWorkoutLogs = async (req: Request, res: Response) => {
   try {
-    const { gymId, userId } = req.user!;
+    const { gymId, userId, role } = req.user!;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
     const skip = (page - 1) * limit;
@@ -28,12 +28,36 @@ export const getWorkoutLogs = async (req: Request, res: Response) => {
       },
     };
 
-    // Filter by specific user (for trainers viewing student logs)
-    if (targetUserId) {
-      where.userId = targetUserId;
+    // Role-based filtering
+    if (role.name === 'Trainer') {
+      // Trainers can only see their students' workout logs
+      const trainerMatches = await prisma.trainerMatch.findMany({
+        where: {
+          trainerId: userId,
+          status: 'active',
+          deletedAt: null,
+        },
+        select: { studentId: true },
+      });
+
+      const studentIds = trainerMatches.map(m => m.studentId);
+
+      // If a specific user is requested, check if they're the trainer's student
+      if (targetUserId) {
+        if (!studentIds.includes(targetUserId)) {
+          return errorResponse(res, 'You can only view workout logs of your students', 403);
+        }
+        where.userId = targetUserId;
+      } else {
+        // Show all students' logs
+        where.userId = { in: studentIds };
+      }
     } else {
-      // Default: show only own logs
-      where.userId = userId;
+      // GymOwner can see all users
+      if (targetUserId) {
+        where.userId = targetUserId;
+      }
+      // If no targetUserId, show all (don't restrict to own userId)
     }
 
     if (programId) {
@@ -87,7 +111,7 @@ export const getWorkoutLogs = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      logs,
+      items: logs,
       pagination: {
         total,
         page,

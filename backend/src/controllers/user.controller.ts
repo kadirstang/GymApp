@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-import { successResponse, paginatedResponse } from '../utils/response';
+import { successResponse } from '../utils/response';
 import { ValidationError, NotFoundError, ForbiddenError } from '../utils/errors';
 
 const prisma = new PrismaClient();
@@ -68,17 +68,34 @@ export const getUsers = async (
               name: true,
             },
           },
+          trainerMatchesAsStudent: {
+            where: {
+              status: 'active',
+              deletedAt: null,
+            },
+            select: { id: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
       }),
       prisma.user.count({ where }),
     ]);
 
-    paginatedResponse(_res, users, {
-      page: pageNum,
-      limit: limitNum,
-      total,
-      totalPages: Math.ceil(total / limitNum),
+    // Add hasPrivateTraining flag to each user
+    const usersWithBadge = users.map(user => ({
+      ...user,
+      hasPrivateTraining: user.trainerMatchesAsStudent.length > 0,
+      trainerMatchesAsStudent: undefined, // Remove from response
+    }));
+
+    return successResponse(_res, {
+      items: usersWithBadge,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      }
     });
   } catch (error) {
     next(error);

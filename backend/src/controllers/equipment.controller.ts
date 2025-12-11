@@ -61,7 +61,7 @@ export const getEquipment = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      equipment,
+      items: equipment,
       pagination: {
         total,
         page,

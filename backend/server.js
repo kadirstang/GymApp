@@ -8,7 +8,7 @@ const errorHandler = require('./src/middleware/errorHandler');
 const apiRoutes = require('./src/routes');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.BACKEND_PORT || 3001;
 
 // Middleware
 app.use(cors());

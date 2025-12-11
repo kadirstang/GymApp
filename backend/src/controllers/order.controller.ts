@@ -219,11 +219,36 @@ export const getOrders = async (req: Request, res: Response) => {
       deletedAt: null,
     };
 
-    // Students can only see their own orders
+    // Role-based filtering
     if (role === 'Student') {
+      // Students can only see their own orders
       where.userId = userId;
-    } else if (filterUserId) {
-      where.userId = filterUserId;
+    } else if (role.name === 'Trainer') {
+      // Trainers can only see their students' orders
+      const trainerMatches = await prisma.trainerMatch.findMany({
+        where: {
+          trainerId: userId,
+          status: 'active',
+          deletedAt: null,
+        },
+        select: { studentId: true },
+      });
+
+      const studentIds = trainerMatches.map(m => m.studentId);
+
+      if (filterUserId) {
+        if (!studentIds.includes(filterUserId as string)) {
+          return errorResponse(res, 'You can only view orders of your students', 403);
+        }
+        where.userId = filterUserId;
+      } else {
+        where.userId = { in: studentIds };
+      }
+    } else {
+      // GymOwner can see all orders
+      if (filterUserId) {
+        where.userId = filterUserId;
+      }
     }
 
     if (status) {
@@ -278,12 +303,12 @@ export const getOrders = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      orders,
+      items: orders,
       pagination: {
         page: pageNum,
         limit: limitNum,
         total,
-        pages: Math.ceil(total / limitNum),
+        totalPages: Math.ceil(total / limitNum),
       },
     });
   } catch (error: any) {

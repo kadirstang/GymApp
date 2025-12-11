@@ -40,7 +40,7 @@ export const getCategories = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      categories,
+      items: categories,
       pagination: {
         total,
         page,

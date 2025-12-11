@@ -65,7 +65,7 @@ export const getProducts = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      products,
+      items: products,
       pagination: {
         total,
         page,

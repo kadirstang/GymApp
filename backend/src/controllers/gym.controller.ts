@@ -58,7 +58,7 @@ export const getGyms = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      gyms,
+      items: gyms,
       pagination: {
         total,
         page: Number(page),

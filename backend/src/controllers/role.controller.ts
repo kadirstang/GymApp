@@ -42,7 +42,7 @@ export const getRoles = async (req: Request, res: Response) => {
     ]);
 
     return successResponse(res, {
-      roles,
+      items: roles,
       pagination: {
         total,
         page: Number(page),
