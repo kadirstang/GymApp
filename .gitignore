@@ -4,6 +4,7 @@
 *.key
 .vscode/
 .idea/
+.gitignore
 
 # Genel Log ve Cache Dosyaları
 *.log
