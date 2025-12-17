@@ -75,6 +75,7 @@ export const register = async (
         firstName: true,
         lastName: true,
         phone: true,
+        avatarUrl: true,
         gymId: true,
         roleId: true,
         createdAt: true,
@@ -154,6 +155,7 @@ export const login = async (
         firstName: true,
         lastName: true,
         phone: true,
+        avatarUrl: true,
         gymId: true,
         roleId: true,
         gym: {

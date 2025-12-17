@@ -309,6 +309,71 @@ export const changePassword = async (
 };
 
 /**
+ * Update user custom permissions
+ * Only GymOwner can assign custom permissions to trainers
+ */
+export const updateCustomPermissions = async (
+  req: Request,
+  _res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { customPermissions } = req.body;
+    const gymId = req.user?.gymId;
+
+    // Validation
+    if (!customPermissions || typeof customPermissions !== 'object') {
+      throw new ValidationError('Custom permissions must be an object');
+    }
+
+    // Get target user
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        id,
+        gymId,
+        deletedAt: null,
+      },
+      include: {
+        role: true,
+      },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundError('User not found');
+    }
+
+    // Only allow setting custom permissions for Trainers
+    if (targetUser.role.name !== 'Trainer') {
+      throw new ValidationError('Custom permissions can only be set for Trainers');
+    }
+
+    // Update custom permissions
+    const updatedUser = await prisma.user.update({
+      where: { id },
+      data: { customPermissions },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        customPermissions: true,
+        role: {
+          select: {
+            name: true,
+            permissions: true,
+          },
+        },
+      },
+    });
+
+    successResponse(_res, updatedUser, 'Custom permissions updated successfully');
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * Delete user (soft delete)
  * DELETE /api/users/:id
  */

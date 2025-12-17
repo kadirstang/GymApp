@@ -3,6 +3,7 @@ export interface JWTPayload {
     email: string;
     gymId: string;
     roleId: string;
+    role: string;
 }
 export interface AuthRequest extends Request {
     user?: JWTPayload;

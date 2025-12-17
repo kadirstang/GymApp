@@ -139,6 +139,17 @@ class ApiClient {
     return response.data;
   }
 
+  async uploadUserAvatar(id: string, file: File): Promise<ApiResponse<User>> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const response = await this.client.post(`/users/${id}/avatar`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data;
+  }
+
   // ==================== TRAINER MATCHES ====================
   async getTrainerMatches(filters?: TrainerMatchFilters): Promise<ApiResponse<ListResponse<TrainerMatch>>> {
     const response = await this.client.get('/trainer-matches', { params: filters });
@@ -190,6 +201,17 @@ class ApiClient {
 
   async deleteExercise(id: string): Promise<ApiResponse> {
     const response = await this.client.delete(`/exercises/${id}`);
+    return response.data;
+  }
+
+  async uploadExerciseVideo(id: string, file: File): Promise<ApiResponse<Exercise>> {
+    const formData = new FormData();
+    formData.append('video', file);
+    const response = await this.client.post(`/exercises/${id}/video`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   }
 
@@ -348,6 +370,16 @@ class ApiClient {
     return response.data;
   }
 
+  async updateProductCategory(id: string, data: CreateProductCategoryRequest): Promise<ApiResponse<ProductCategory>> {
+    const response = await this.client.put(`/product-categories/${id}`, data);
+    return response.data;
+  }
+
+  async deleteProductCategory(id: string): Promise<ApiResponse<void>> {
+    const response = await this.client.delete(`/product-categories/${id}`);
+    return response.data;
+  }
+
   async getProducts(filters?: ProductFilters): Promise<ApiResponse<ListResponse<Product>>> {
     const response = await this.client.get('/products', { params: filters });
     return response.data;
@@ -370,6 +402,17 @@ class ApiClient {
 
   async deleteProduct(id: string): Promise<ApiResponse> {
     const response = await this.client.delete(`/products/${id}`);
+    return response.data;
+  }
+
+  async uploadProductImage(id: string, file: File): Promise<ApiResponse<Product>> {
+    const formData = new FormData();
+    formData.append('image', file);
+    const response = await this.client.post(`/products/${id}/image`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
     return response.data;
   }
 
@@ -406,6 +449,41 @@ class ApiClient {
 
   async getOrderStats(): Promise<ApiResponse<OrderStats>> {
     const response = await this.client.get('/orders/stats');
+    return response.data;
+  }
+
+  // Analytics
+  async getRevenueTrend(): Promise<ApiResponse<{ date: string; revenue: number }[]>> {
+    const response = await this.client.get('/analytics/revenue-trend');
+    return response.data;
+  }
+
+  async getOrderStatusDistribution(): Promise<ApiResponse<{ status: string; count: number }[]>> {
+    const response = await this.client.get('/analytics/order-status');
+    return response.data;
+  }
+
+  async getTopProducts(limit?: number): Promise<ApiResponse<{ productId: string; name: string; totalSold: number }[]>> {
+    const response = await this.client.get('/analytics/top-products', {
+      params: { limit },
+    });
+    return response.data;
+  }
+
+  async getActiveStudentsTrend(): Promise<ApiResponse<{ date: string; active: number; inactive: number }[]>> {
+    const response = await this.client.get('/analytics/active-students');
+    return response.data;
+  }
+
+  async getDashboardSummary(): Promise<ApiResponse<{
+    totalRevenue: number;
+    pendingOrders: number;
+    totalProducts: number;
+    lowStockProducts: number;
+    activeStudents?: number;
+    totalUsers: number;
+  }>> {
+    const response = await this.client.get('/analytics/summary');
     return response.data;
   }
 }

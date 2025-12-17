@@ -54,6 +54,7 @@ const register = async (req, res, next) => {
                 firstName: true,
                 lastName: true,
                 phone: true,
+                avatarUrl: true,
                 gymId: true,
                 roleId: true,
                 createdAt: true,
@@ -78,12 +79,14 @@ const register = async (req, res, next) => {
             email: user.email,
             gymId: user.gymId,
             roleId: user.roleId,
+            role: user.role.name,
         });
         const refreshToken = (0, jwt_1.generateRefreshToken)({
             userId: user.id,
             email: user.email,
             gymId: user.gymId,
             roleId: user.roleId,
+            role: user.role.name,
         });
         (0, response_1.successResponse)(res, {
             user,
@@ -111,6 +114,7 @@ const login = async (req, res, next) => {
                 firstName: true,
                 lastName: true,
                 phone: true,
+                avatarUrl: true,
                 gymId: true,
                 roleId: true,
                 gym: {
@@ -145,12 +149,14 @@ const login = async (req, res, next) => {
             email: user.email,
             gymId: user.gymId,
             roleId: user.roleId,
+            role: user.role.name,
         });
         const refreshToken = (0, jwt_1.generateRefreshToken)({
             userId: user.id,
             email: user.email,
             gymId: user.gymId,
             roleId: user.roleId,
+            role: user.role.name,
         });
         const { passwordHash, ...userWithoutPassword } = user;
         (0, response_1.successResponse)(res, {
@@ -231,6 +237,11 @@ const refreshAccessToken = async (req, res, next) => {
                 email: true,
                 gymId: true,
                 roleId: true,
+                role: {
+                    select: {
+                        name: true,
+                    },
+                },
             },
         });
         if (!user) {
@@ -241,6 +252,7 @@ const refreshAccessToken = async (req, res, next) => {
             email: user.email,
             gymId: user.gymId,
             roleId: user.roleId,
+            role: user.role.name,
         });
         (0, response_1.successResponse)(res, { token: newToken }, 'Token refreshed successfully');
     }

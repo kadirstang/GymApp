@@ -2,10 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Pencil, Trash2, QrCode, Wrench } from 'lucide-react';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient } from '@/lib/api-client';
 import { Equipment } from '@/types/api';
 import { useToast } from '@/contexts/ToastContext';
-import { Button, Input, Modal, Table, Badge, Card, Select, Textarea } from '@/components/ui';
+import { Button, Input, Modal, Table, Badge, Card, Select, Textarea, ConfirmDialog } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
 interface EquipmentFormData {
@@ -26,12 +28,12 @@ export default function EquipmentPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState<Equipment | null>(null);
-  const [deletingEquipment, setDeletingEquipment] = useState<Equipment | null>(null);
   const [viewingQr, setViewingQr] = useState<{ equipment: Equipment; qrCode: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; equipment: Equipment | null }>({ isOpen: false, equipment: null });
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Pagination & Filters
   const [currentPage, setCurrentPage] = useState(1);
@@ -133,23 +135,24 @@ export default function EquipmentPage() {
     }
   };
 
-  const handleOpenDeleteModal = (equip: Equipment) => {
-    setDeletingEquipment(equip);
-    setIsDeleteModalOpen(true);
+  const handleDeleteClick = (equip: Equipment) => {
+    setDeleteDialog({ isOpen: true, equipment: equip });
   };
 
-  const handleDelete = async () => {
-    if (!deletingEquipment) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.equipment) return;
 
+    setIsDeleting(true);
     try {
-      await apiClient.deleteEquipment(deletingEquipment.id);
+      await apiClient.deleteEquipment(deleteDialog.equipment.id);
       toast.success('Ekipman başarıyla silindi');
-      setIsDeleteModalOpen(false);
-      setDeletingEquipment(null);
       fetchEquipment();
+      setDeleteDialog({ isOpen: false, equipment: null });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Silme işlemi sırasında hata oluştu';
       toast.error(message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -234,7 +237,7 @@ export default function EquipmentPage() {
           <Button
             size="sm"
             variant="danger"
-            onClick={() => handleOpenDeleteModal(row)}
+            onClick={() => handleDeleteClick(row)}
             leftIcon={<Trash2 size={16} />}
           >
             Sil
@@ -245,7 +248,9 @@ export default function EquipmentPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <ProtectedRoute>
+      <DashboardLayout>
+        <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -344,27 +349,18 @@ export default function EquipmentPage() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, equipment: null })}
+        onConfirm={handleDeleteConfirm}
         title="Ekipmanı Sil"
-        size="sm"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>
-              İptal
-            </Button>
-            <Button variant="danger" onClick={handleDelete}>
-              Sil
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-gray-700">
-          <strong>{deletingEquipment?.name}</strong> ekipmanını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-        </p>
-      </Modal>
+        message={`"${deleteDialog.equipment?.name}" ekipmanını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Sil"
+        cancelText="İptal"
+        variant="danger"
+        isLoading={isDeleting}
+      />
 
       {/* QR Code Modal */}
       <Modal
@@ -397,6 +393,8 @@ export default function EquipmentPage() {
           </div>
         )}
       </Modal>
-    </div>
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }

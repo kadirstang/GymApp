@@ -8,6 +8,7 @@ const express_validator_1 = require("express-validator");
 const auth_middleware_1 = require("../middleware/auth.middleware");
 const rbac_middleware_1 = require("../middleware/rbac.middleware");
 const validation_middleware_1 = require("../middleware/validation.middleware");
+const upload_middleware_1 = require("../middleware/upload.middleware");
 const exercise_controller_1 = require("../controllers/exercise.controller");
 const router = express_1.default.Router();
 router.get('/muscle-groups', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('exercises.read'), exercise_controller_1.getMuscleGroups);
@@ -68,5 +69,8 @@ router.put('/:id', auth_middleware_1.authenticate, (0, rbac_middleware_1.require
 router.delete('/:id', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('exercises.delete'), [
     (0, express_validator_1.param)('id').isUUID().withMessage('Invalid exercise ID')
 ], validation_middleware_1.handleValidationErrors, exercise_controller_1.deleteExercise);
+router.post('/:id/video', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('exercises.update'), [
+    (0, express_validator_1.param)('id').isUUID().withMessage('Invalid exercise ID')
+], validation_middleware_1.handleValidationErrors, upload_middleware_1.exerciseVideoUpload.single('video'), exercise_controller_1.uploadExerciseVideo);
 exports.default = router;
 //# sourceMappingURL=exercise.routes.js.map

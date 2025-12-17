@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getStudentTrainer = exports.getTrainerStudents = exports.endMatch = exports.updateMatchStatus = exports.createMatch = exports.getMatchById = exports.getMatches = void 0;
+exports.getMyStudentDetail = exports.getMyStudentsDetailed = exports.getStudentTrainer = exports.getTrainerStudents = exports.endMatch = exports.updateMatchStatus = exports.createMatch = exports.getMatchById = exports.getMatches = void 0;
 const client_1 = require("@prisma/client");
 const response_js_1 = require("../utils/response.js");
 const prisma = new client_1.PrismaClient();
@@ -54,7 +54,7 @@ const getMatches = async (req, res) => {
             prisma.trainerMatch.count({ where })
         ]);
         return (0, response_js_1.successResponse)(res, {
-            matches,
+            items: matches,
             pagination: {
                 total,
                 page: Number(page),
@@ -129,6 +129,7 @@ const createMatch = async (req, res) => {
     try {
         const { trainerId, studentId } = req.body;
         const user = req.user;
+        console.log('Creating trainer match:', { trainerId, studentId, gymId: user.gymId });
         const trainer = await prisma.user.findFirst({
             where: {
                 id: trainerId,
@@ -141,6 +142,7 @@ const createMatch = async (req, res) => {
                 }
             }
         });
+        console.log('Trainer found:', trainer ? { id: trainer.id, role: trainer.role.name } : 'NOT FOUND');
         if (!trainer) {
             return (0, response_js_1.errorResponse)(res, 'Trainer not found', 404);
         }
@@ -159,6 +161,7 @@ const createMatch = async (req, res) => {
                 }
             }
         });
+        console.log('Student found:', student ? { id: student.id, role: student.role.name } : 'NOT FOUND');
         if (!student) {
             return (0, response_js_1.errorResponse)(res, 'Student not found', 404);
         }
@@ -422,4 +425,187 @@ const getStudentTrainer = async (req, res) => {
     }
 };
 exports.getStudentTrainer = getStudentTrainer;
+const getMyStudentsDetailed = async (req, res) => {
+    try {
+        const { userId } = req.user;
+        console.log('Fetching students for trainer:', userId);
+        const matches = await prisma.trainerMatch.findMany({
+            where: {
+                trainerId: userId,
+                status: 'active',
+                deletedAt: null,
+            },
+            include: {
+                student: {
+                    include: {
+                        assignedPrograms: {
+                            where: { deletedAt: null },
+                            select: {
+                                id: true,
+                                name: true,
+                                difficultyLevel: true,
+                            },
+                            take: 1,
+                        },
+                        workoutLogs: {
+                            where: {
+                                deletedAt: null,
+                                startedAt: {
+                                    gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+                                },
+                            },
+                            select: {
+                                id: true,
+                                startedAt: true,
+                                endedAt: true,
+                            },
+                            orderBy: { startedAt: 'desc' },
+                        },
+                        measurements: {
+                            where: { deletedAt: null },
+                            orderBy: { measuredAt: 'desc' },
+                            take: 1,
+                        },
+                    },
+                },
+            },
+            orderBy: { createdAt: 'desc' },
+        });
+        console.log('Found matches:', matches.length);
+        const studentsWithStats = matches.map(match => {
+            const student = match.student;
+            const lastWorkout = student.workoutLogs[0];
+            const lastWorkoutDate = lastWorkout?.startedAt;
+            const monthlyWorkouts = student.workoutLogs.length;
+            const isActive = lastWorkoutDate &&
+                (Date.now() - new Date(lastWorkoutDate).getTime()) < 7 * 24 * 60 * 60 * 1000;
+            return {
+                id: student.id,
+                firstName: student.firstName,
+                lastName: student.lastName,
+                email: student.email,
+                phone: student.phone,
+                avatarUrl: student.avatarUrl,
+                lastWorkoutDate,
+                assignedProgram: student.assignedPrograms[0] || null,
+                monthlyWorkouts,
+                isActive: !!isActive,
+                latestMeasurement: student.measurements[0] || null,
+                matchedAt: match.createdAt,
+            };
+        });
+        const totalStudents = studentsWithStats.length;
+        const activeStudents = studentsWithStats.filter(s => s.isActive).length;
+        const totalWorkouts = studentsWithStats.reduce((sum, s) => sum + s.monthlyWorkouts, 0);
+        const avgWorkoutsPerWeek = totalStudents > 0
+            ? (totalWorkouts / totalStudents) * (7 / 30)
+            : 0;
+        return (0, response_js_1.successResponse)(res, {
+            items: studentsWithStats,
+            stats: {
+                total: totalStudents,
+                active: activeStudents,
+                avgWorkoutsPerWeek: parseFloat(avgWorkoutsPerWeek.toFixed(1)),
+            },
+        });
+    }
+    catch (error) {
+        console.error('Error fetching my students:', error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch students', 500);
+    }
+};
+exports.getMyStudentsDetailed = getMyStudentsDetailed;
+const getMyStudentDetail = async (req, res) => {
+    try {
+        const { userId } = req.user;
+        const { studentId } = req.params;
+        const match = await prisma.trainerMatch.findFirst({
+            where: {
+                trainerId: userId,
+                studentId,
+                status: 'active',
+                deletedAt: null,
+            },
+        });
+        if (!match) {
+            return (0, response_js_1.errorResponse)(res, 'Student not found or not assigned to you', 404);
+        }
+        const student = await prisma.user.findFirst({
+            where: {
+                id: studentId,
+                deletedAt: null,
+            },
+            include: {
+                role: {
+                    select: { name: true },
+                },
+                assignedPrograms: {
+                    where: { deletedAt: null },
+                    include: {
+                        creator: {
+                            select: {
+                                firstName: true,
+                                lastName: true,
+                            },
+                        },
+                    },
+                },
+                workoutLogs: {
+                    where: { deletedAt: null },
+                    orderBy: { startedAt: 'desc' },
+                    take: 30,
+                    include: {
+                        program: {
+                            select: {
+                                name: true,
+                            },
+                        },
+                        _count: {
+                            select: { entries: true },
+                        },
+                    },
+                },
+                measurements: {
+                    where: { deletedAt: null },
+                    orderBy: { measuredAt: 'desc' },
+                    take: 10,
+                },
+                orders: {
+                    where: { deletedAt: null },
+                    orderBy: { createdAt: 'desc' },
+                    take: 10,
+                    select: {
+                        id: true,
+                        orderNumber: true,
+                        totalAmount: true,
+                        status: true,
+                        createdAt: true,
+                        items: {
+                            include: {
+                                product: {
+                                    select: {
+                                        name: true,
+                                        imageUrl: true,
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+        if (!student) {
+            return (0, response_js_1.errorResponse)(res, 'Student not found', 404);
+        }
+        return (0, response_js_1.successResponse)(res, {
+            ...student,
+            matchedAt: match.createdAt,
+        });
+    }
+    catch (error) {
+        console.error('Error fetching student detail:', error);
+        return (0, response_js_1.errorResponse)(res, 'Failed to fetch student details', 500);
+    }
+};
+exports.getMyStudentDetail = getMyStudentDetail;
 //# sourceMappingURL=trainerMatch.controller.js.map

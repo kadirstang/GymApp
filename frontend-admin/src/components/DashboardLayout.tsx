@@ -9,11 +9,14 @@ import {
   Calendar,
   ClipboardList,
   Package,
-  ShoppingCart,
+  ShoppingBag,
+  Receipt,
+  Tags,
   Users,
   GraduationCap,
   Settings,
   LogOut,
+  TrendingUp,
 } from 'lucide-react';
 
 const ownerNavigation = [
@@ -22,7 +25,9 @@ const ownerNavigation = [
   { name: 'Programlar', href: '/programs', icon: Calendar },
   { name: 'Antrenmanlar', href: '/workouts', icon: ClipboardList },
   { name: 'Ekipmanlar', href: '/equipment', icon: Package },
-  { name: 'Ürünler', href: '/products', icon: ShoppingCart },
+  { name: 'Kategoriler', href: '/categories', icon: Tags },
+  { name: 'Ürünler', href: '/products', icon: ShoppingBag },
+  { name: 'Siparişler', href: '/orders', icon: Receipt },
   { name: 'Kullanıcılar', href: '/users', icon: Users },
   { name: 'Ayarlar', href: '/settings', icon: Settings },
 ];
@@ -33,6 +38,7 @@ const trainerNavigation = [
   { name: 'Programlar', href: '/programs', icon: Calendar },
   { name: 'Antrenmanlar', href: '/workouts', icon: ClipboardList },
   { name: 'Ekipmanlar', href: '/equipment', icon: Package },
+  { name: 'Siparişler', href: '/orders', icon: Receipt },
   { name: 'Öğrencilerim', href: '/my-students', icon: GraduationCap },
   { name: 'Kullanıcılar', href: '/users', icon: Users },
   { name: 'Ayarlar', href: '/settings', icon: Settings },
@@ -84,11 +90,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
           <div className="flex items-center mb-3">
             <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
-                <span className="text-sm font-medium text-white">
-                  {user?.firstName?.[0]}{user?.lastName?.[0]}
-                </span>
-              </div>
+              {user?.avatarUrl ? (
+                <img
+                  src={`http://localhost:3001${user.avatarUrl}`}
+                  alt="Avatar"
+                  className="w-8 h-8 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center">
+                  <span className="text-sm font-medium text-white">
+                    {user?.firstName?.[0]}{user?.lastName?.[0]}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="ml-3 flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">

@@ -34,6 +34,7 @@ export interface User {
   role: Role;
   gym?: Gym;
   gymId?: string;
+  avatarUrl?: string;
   hasPrivateTraining?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -274,6 +275,7 @@ export interface ProductCategory {
   id: string;
   name: string;
   description?: string;
+  imageUrl?: string;
   gymId: string;
   productCount?: number;
   createdAt: string;
@@ -325,6 +327,12 @@ export interface Order {
   status: 'pending_approval' | 'prepared' | 'completed' | 'cancelled';
   totalAmount: string; // Decimal as string
   notes?: string;
+  metadata?: {
+    cancellationReason?: string;
+    internalNotes?: string;
+    deliveryNotes?: string;
+    paymentMethod?: string;
+  };
   user?: User;
   items?: OrderItem[];
   createdAt: string;
@@ -352,6 +360,12 @@ export interface CreateOrderRequest {
 
 export interface UpdateOrderStatusRequest {
   status: 'pending_approval' | 'prepared' | 'completed' | 'cancelled';
+  metadata?: {
+    cancellationReason?: string;
+    internalNotes?: string;
+    deliveryNotes?: string;
+    paymentMethod?: string;
+  };
 }
 
 export interface OrderStats {

@@ -35,7 +35,7 @@ const getRoles = async (req, res) => {
             prisma.role.count({ where })
         ]);
         return (0, response_js_1.successResponse)(res, {
-            roles,
+            items: roles,
             pagination: {
                 total,
                 page: Number(page),

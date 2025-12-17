@@ -81,6 +81,22 @@ router.put(
 );
 
 /**
+ * @route   PATCH /api/users/:id/custom-permissions
+ * @desc    Update user custom permissions
+ * @access  Private (requires users.update permission, GymOwner only)
+ */
+router.patch(
+  '/:id/custom-permissions',
+  [
+    body('customPermissions').isObject().withMessage('Custom permissions must be an object'),
+    validate,
+  ],
+  gymIsolationMiddleware.verifySameGymUser('id'),
+  rbacMiddleware.requirePermission('users.update'),
+  userController.updateCustomPermissions
+);
+
+/**
  * @route   DELETE /api/users/:id
  * @desc    Delete user (soft delete)
  * @access  Private (requires users.delete permission)

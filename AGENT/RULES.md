@@ -1,13 +1,29 @@
-# 📜 Development Rules & Best Practices
+# 📜 GymOS - Development Rules & Standards
 
-**Purpose:** Code quality, consistency, and maintainability guidelines
+**Last Updated:** 14 Aralık 2025
+**Purpose:** Comprehensive code standards, conventions, and best practices
+
+---
+
+## 📋 İçindekiler
+
+1. [Architecture Principles](#architecture-principles)
+2. [Code Standards](#code-standards)
+3. [Naming Conventions](#naming-conventions)
+4. [Database Rules](#database-rules)
+5. [API Design](#api-design)
+6. [Frontend Standards](#frontend-standards)
+7. [Git Workflow](#git-workflow)
+8. [Security Best Practices](#security-best-practices)
+9. [Testing Guidelines](#testing-guidelines)
+10. [Performance Best Practices](#performance-best-practices)
 
 ---
 
 ## 🏗️ Architecture Principles
 
 ### 1. Multi-Tenant Isolation
-**⚠️ CRITICAL:** Every database query MUST include `gym_id` filtering
+**⚠️ CRITICAL:** Every database query MUST include `gymId` filtering
 
 **Bad:**
 ```typescript
@@ -24,16 +40,31 @@ const users = await prisma.user.findMany({
   where: {
     roleId: trainerId,
     gymId: req.user.gymId,
-    deleted_at: null
+    deletedAt: null
   }
 });
 ```
 
-**Middleware:** Use `enforceGymIsolation` middleware on all routes that touch gym-specific data
+**Controller Pattern:**
+```typescript
+// Always destructure gymId from req.user
+export const getUsers = async (req: Request, res: Response) => {
+  const gymId = req.user.gymId; // Extract once
+
+  const users = await prisma.user.findMany({
+    where: {
+      gymId, // MUST HAVE
+      deletedAt: null,
+    }
+  });
+};
+```
+
+**Middleware:** Use `authenticate` on all protected routes
 
 ```typescript
 // routes/user.routes.ts
-router.get('/users', authenticate, enforceGymIsolation, userController.listUsers);
+router.get('/users', authenticate, userController.listUsers);
 ```
 
 ---
@@ -52,7 +83,7 @@ await prisma.user.delete({ where: { id } });
 // ✅ CORRECT - Soft delete
 await prisma.user.update({
   where: { id },
-  data: { deleted_at: new Date() }
+  data: { deletedAt: new Date() }
 });
 ```
 
@@ -60,10 +91,16 @@ await prisma.user.update({
 
 ```typescript
 where: {
-  deleted_at: null,  // Always include this
+  deletedAt: null,  // Always include this
   // ... other conditions
 }
 ```
+
+**Why Soft Delete?**
+- Audit trail: Track historical data
+- Recovery: Restore accidentally deleted records
+- Compliance: Required for GDPR, data retention policies
+- Referential integrity: Avoid breaking foreign key relationships
 
 ---
 
@@ -73,7 +110,7 @@ where: {
 **Database:**
 ```prisma
 model User {
-  id    String @id @default(uuid())  // ✅ UUID
+  id String @id @default(uuid()) @db.Uuid  // ✅ UUID
   // NOT: id Int @id @default(autoincrement())  ❌
 }
 ```
@@ -91,28 +128,239 @@ interface User {
 }
 ```
 
+**Why UUIDs?**
+- Security: No sequential IDs (prevents enumeration attacks)
+- Distributed systems: Can generate offline without DB
+- Multi-tenant: No ID conflicts between gyms
+
 ---
 
-## 🔐 Security Rules
+## 🎨 Code Standards
 
-### 1. JWT Authentication
-**Rule:** All protected routes MUST use `authenticate` middleware
-
-```typescript
-// routes/exercise.routes.ts
-router.post('/exercises', authenticate, requirePermission('exercises.create'), createExercise);
-//                         ^^^^^^^^^^^^  REQUIRED
+### Backend Structure
+```
+backend/
+├── server.js              # App entry point
+├── middleware/
+│   └── auth.js           # JWT auth, RBAC
+├── prisma/
+│   └── schema.prisma     # Database schema
+└── __tests__/
+    └── api.test.js       # API tests
 ```
 
-**Token Validation:**
-- Check expiration: 7 days access token, 30 days refresh token
-- Verify signature with `JWT_SECRET`
-- Extract payload: `userId`, `email`, `roleId`, `gymId`
+### Controller Pattern
+```typescript
+// ✅ GOOD: Proper structure
+export const getUsers = async (req: Request, res: Response) => {
+  try {
+    const { page = 1, limit = 20, role } = req.query;
+    const gymId = req.user.gymId; // Always extract
+
+    const users = await prisma.user.findMany({
+      where: {
+        gymId, // MUST HAVE
+        roleId: role ? { equals: role } : undefined,
+        deletedAt: null, // MUST HAVE
+      },
+      skip: (page - 1) * limit,
+      take: limit,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const total = await prisma.user.count({
+      where: {
+        gymId,
+        roleId: role ? { equals: role } : undefined,
+        deletedAt: null,
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        items: users,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          totalPages: Math.ceil(total / limit),
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error in getUsers:', error);
+    res.status(500).json({
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+};
+
+// ❌ BAD: No gymId filter, no soft delete check, no pagination
+export const getUsers = async (req: Request, res: Response) => {
+  const users = await prisma.user.findMany(); // WRONG!
+  res.json(users);
+};
+```
+
+### Error Handling
+```typescript
+// ✅ GOOD: Proper error handling
+try {
+  // ... business logic
+} catch (error) {
+  console.error('Operation failed:', error);
+  const message = error instanceof Error ? error.message : 'Unknown error';
+  res.status(500).json({
+    success: false,
+    message,
+  });
+}
+
+// ❌ BAD: Generic error handling
+catch (error) {
+  res.status(500).json({ error }); // Exposes stack traces!
+}
+```
 
 ---
 
+### Frontend Structure
+```
+frontend-admin/src/
+├── app/                    # Next.js pages (App Router)
+│   ├── login/
+│   ├── dashboard/
+│   ├── my-students/
+│   ├── programs/
+│   └── settings/
+├── components/
+│   ├── ProtectedRoute.tsx  # Auth wrapper
+│   └── DashboardLayout.tsx # Layout
+├── contexts/
+│   ├── AuthContext.tsx
+│   └── ToastContext.tsx
+├── lib/
+│   └── api-client.ts       # Typed API client
+└── types/
+    └── api.ts              # TypeScript types
+```
+
+### Component Pattern
+```tsx
+// ✅ GOOD: Well-structured component
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
+import { apiClient } from '@/lib/api-client';
+import { Users, Plus, Edit, Trash2 } from 'lucide-react';
+
+interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+export default function UsersPage() {
+  const { user } = useAuth();
+  const toast = useToast();
+  const router = useRouter();
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await apiClient.getUsers({ page: 1, limit: 20 });
+      setUsers(response.data?.items || []);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to load';
+      toast?.showToast('error', message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ProtectedRoute>
+      <DashboardLayout>
+        {loading ? (
+          <div>Loading...</div>
+        ) : (
+          <div>{/* Component content */}</div>
+        )}
+      </DashboardLayout>
+    </ProtectedRoute>
+  );
+}
+```
+
+### API Client Usage
+```typescript
+// ✅ CORRECT: Use typed methods
+const response = await apiClient.getUsers({ page: 1, limit: 20 });
+const user = await apiClient.getUserById(userId);
+await apiClient.createProduct(data);
+await apiClient.updateProgram(id, data);
+
+// ❌ WRONG: Generic HTTP methods don't exist
+const response = await apiClient.get('/users'); // Error!
+await apiClient.post('/products', data); // Error!
+```
+
+### Toast Usage
+```typescript
+// ✅ CORRECT: Type first, message second
+toast?.showToast('success', 'Operation completed');
+toast?.showToast('error', 'Failed to save');
+toast?.showToast('info', 'Processing...');
+
+// ❌ WRONG: Message first
+toast?.showToast('Operation completed', 'success'); // Type error!
+```
+
+---
+
+## 🔐 Security Best Practices
+
+### 1. Authentication
+```typescript
+// ✅ GOOD: Always verify JWT
+const token = req.headers.authorization?.replace('Bearer ', '');
+const decoded = jwt.verify(token, process.env.JWT_SECRET);
+req.user = decoded;
+
+// ❌ BAD: Trust client data
+req.user = JSON.parse(req.headers['x-user']); // NEVER!
+```
+
 ### 2. Authorization (RBAC)
-**Rule:** Use `requirePermission` or `requireRole` middleware
+```typescript
+// ✅ GOOD: Check permissions
+const userPermissions = req.user.role.permissions;
+if (!userPermissions.users?.create) {
+  return res.status(403).json({
+    success: false,
+    message: 'Bu işlem için yetkiniz yok'
+  });
+}
+
+// ❌ BAD: Role-based only (inflexible)
+if (req.user.role.name !== 'Owner') {
+  return res.status(403).json({ message: 'Forbidden' });
+}
+```
 
 **Permission Format:** `resource.action`
 - Examples: `exercises.create`, `programs.update`, `users.delete`
@@ -165,41 +413,609 @@ if (req.user.role.name === 'Trainer' && exercise.createdBy !== req.user.userId) 
 
 ---
 
-### 3. Password Hashing
-**Rule:** NEVER store plain text passwords
-
+### 3. Input Validation
 ```typescript
-// Registration
+// ✅ GOOD: Sanitize & validate
+const email = req.body.email.trim().toLowerCase();
+if (!email || !email.includes('@')) {
+  return res.status(400).json({
+    success: false,
+    message: 'Geçerli bir email adresi girin'
+  });
+}
+
+// ❌ BAD: Trust raw input
+const user = await prisma.user.create({ data: req.body }); // SQL injection risk!
+```
+
+### 4. Password Handling
+```typescript
+// ✅ GOOD: Hash with bcrypt
 import bcrypt from 'bcryptjs';
 
+// Registration
 const hashedPassword = await bcrypt.hash(password, 10);
 await prisma.user.create({
   data: {
     email,
-    password: hashedPassword,  // ✅ Hashed
-    // NOT: password: password  ❌ Plain text
+    password: hashedPassword,
   }
 });
 
 // Login validation
 const isValid = await bcrypt.compare(password, user.password);
+
+// ❌ BAD: Store plain text
+data: { password: req.body.password } // NEVER!
+```
+
+### 5. Environment Variables
+```typescript
+// ✅ GOOD: Use env vars
+const secret = process.env.JWT_SECRET;
+const dbUrl = process.env.DATABASE_URL;
+
+// ❌ BAD: Hardcode secrets
+const secret = 'my-secret-key-123'; // NEVER!
+```
+
+### 6. CORS Configuration
+```typescript
+// ✅ GOOD: Specific origin (production)
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true
+}));
+
+// ✅ OK: Development only
+app.use(cors({ origin: '*' })); // Only for local development!
 ```
 
 ---
 
-### 4. Input Validation
-**Rule:** Validate ALL user inputs with `express-validator`
+## 🏷️ Naming Conventions
 
+### Database (Prisma Schema)
+
+#### Table Names
+- **PascalCase** for models
+- Singular form (User, not Users)
+
+```prisma
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  firstName String   @map("first_name")
+  createdAt DateTime @default(now()) @map("created_at")
+}
+```
+
+#### Field Names
+- **camelCase** in Prisma models
+- **snake_case** in database (use @map)
+
+```prisma
+// ✅ GOOD
+model WorkoutProgram {
+  difficultyLevel String  @map("difficulty_level")
+  assignedUserId  String? @map("assigned_user_id")
+}
+
+// ❌ BAD
+model workout_program {  // Wrong: should be PascalCase
+  difficulty_level String // Wrong: should use camelCase + @map
+}
+```
+
+### Backend API
+
+#### Route Names
+- **kebab-case**, plural nouns
+- `/api/users`, `/api/workout-programs`, `/api/trainer-matches`
+
+#### Endpoint Patterns
+```
+GET    /api/users              # List all
+GET    /api/users/:id          # Get one
+POST   /api/users              # Create
+PUT    /api/users/:id          # Update (full replace)
+PATCH  /api/users/:id          # Update (partial)
+DELETE /api/users/:id          # Delete (soft delete)
+```
+
+#### Function Names
 ```typescript
-// Example: Create exercise validation
-import { body } from 'express-validator';
+// Controllers: action + Resource
+getUserById
+createUser
+updateUser
+deleteUser
+getTrainerStudents
 
-const validateExercise = [
-  body('name').trim().notEmpty().withMessage('Name is required'),
-  body('targetMuscleGroup').isIn(['Chest', 'Back', 'Legs', 'Shoulders', 'Arms', 'Core'])
-    .withMessage('Invalid muscle group'),
-  body('difficulty').isIn(['Beginner', 'Intermediate', 'Advanced'])
-    .withMessage('Invalid difficulty level'),
+// Middleware: descriptive verb
+authenticate
+requirePermission
+validateRequest
+
+// Utils: verb + Object
+hashPassword
+generateToken
+formatDate
+```
+
+### Frontend
+
+#### Component Files
+- **PascalCase** for components: `UserList.tsx`, `DashboardLayout.tsx`
+- **camelCase** for utilities: `api-client.ts`, `auth-utils.ts`
+- **kebab-case** for pages: `my-students/page.tsx`
+
+#### Component Names
+```tsx
+// ✅ GOOD
+export default function UserListPage() {}
+function UserCard({ user }: Props) {}
+const DashboardLayout = ({ children }) => {};
+
+// ❌ BAD
+export default function usersPage() {}  // Wrong case
+function user_card() {}                 // Wrong case
+```
+
+#### Hook Names
+- Always start with `use`: `useAuth`, `useToast`, `useFetch`
+
+#### State Variables
+```typescript
+// ✅ GOOD: Descriptive pairs
+const [users, setUsers] = useState([]);
+const [isLoading, setIsLoading] = useState(false);
+const [selectedUser, setSelectedUser] = useState(null);
+
+// ❌ BAD: Unclear names
+const [data, setData] = useState([]);
+const [flag, setFlag] = useState(false);
+```
+
+---
+
+## 💾 Database Rules
+
+### 1. Always Use Soft Delete
+```prisma
+model User {
+  deletedAt DateTime? @map("deleted_at")
+}
+```
+```typescript
+// Delete
+await prisma.user.update({
+  where: { id },
+  data: { deletedAt: new Date() }
+});
+
+// Query
+where: { deletedAt: null }
+```
+
+### 2. Multi-Tenant Isolation
+```typescript
+// ✅ ALWAYS include gymId in queries
+where: {
+  gymId: req.user.gymId,
+  deletedAt: null,
+}
+
+// ✅ ALWAYS include gymId in creates
+data: {
+  ...input,
+  gymId: req.user.gymId,
+}
+```
+
+### 3. UUID Primary Keys
+```prisma
+id String @id @default(uuid()) @db.Uuid
+```
+
+### 4. Timestamps (Required)
+```prisma
+createdAt DateTime  @default(now()) @map("created_at")
+updatedAt DateTime  @updatedAt @map("updated_at")
+deletedAt DateTime? @map("deleted_at")
+```
+
+### 5. Foreign Keys with Cascade
+```prisma
+// ✅ GOOD: Proper relations
+model WorkoutProgram {
+  createdBy     String @map("created_by")
+  createdByUser User   @relation("CreatedPrograms", fields: [createdBy], references: [id])
+}
+
+// Define inverse relation
+model User {
+  createdPrograms WorkoutProgram[] @relation("CreatedPrograms")
+}
+```
+
+### 6. Indexes for Performance
+```prisma
+@@index([gymId])
+@@index([createdBy])
+@@index([deleted_at])
+@@unique([gymId, email])
+```
+
+---
+
+## 🌐 API Design
+
+### Response Format (Standard)
+```typescript
+// ✅ SUCCESS Response
+{
+  "success": true,
+  "message": "Operation completed",
+  "data": {
+    "user": {...},
+    "token": "..."
+  }
+}
+
+// ✅ ERROR Response
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": ["Email is required", "Password too short"]
+}
+
+// ✅ LIST Response (Paginated)
+{
+  "success": true,
+  "data": {
+    "items": [...],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 156,
+      "totalPages": 8
+    }
+  }
+}
+```
+
+### Query Parameters
+```typescript
+// ✅ GOOD: Consistent naming
+GET /api/users?page=1&limit=20&search=john&role=Student&sortBy=createdAt&order=desc
+
+// Standard parameters:
+// - page: number (default: 1)
+// - limit: number (default: 20, max: 100)
+// - search: string
+// - sortBy: string (field name)
+// - order: 'asc' | 'desc'
+```
+
+### Authentication Header
+```typescript
+// Header format
+Authorization: Bearer <JWT_TOKEN>
+
+// Token payload
+{
+  userId: string,
+  email: string,
+  gymId: string,
+  roleId: string,
+  role: string,
+  iat: number,
+  exp: number
+}
+```
+
+---
+
+## 🎨 Frontend Standards
+
+### 1. Import Order
+```typescript
+// 1. React & Next.js
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+
+// 2. External libraries
+import { Search, Plus, Edit } from 'lucide-react';
+
+// 3. Internal components
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
+
+// 4. Contexts & hooks
+import { useAuth } from '@/contexts/AuthContext';
+import { useToast } from '@/contexts/ToastContext';
+
+// 5. Utils & API
+import { apiClient } from '@/lib/api-client';
+
+// 6. Types
+import type { User, WorkoutProgram } from '@/types/api';
+```
+
+### 2. Protected Routes (Always)
+```tsx
+export default function SecurePage() {
+  return (
+    <ProtectedRoute>
+      <DashboardLayout>
+        {/* Page content */}
+      </DashboardLayout>
+    </ProtectedRoute>
+  );
+}
+```
+
+### 3. Loading & Error States
+```tsx
+// ✅ GOOD: Handle all states
+{loading ? (
+  <div className="text-center py-12">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+    <p className="text-gray-500 mt-4">Yükleniyor...</p>
+  </div>
+) : error ? (
+  <div className="text-center py-12">
+    <p className="text-red-600">{error}</p>
+    <button onClick={retry}>Tekrar Dene</button>
+  </div>
+) : data.length === 0 ? (
+  <div className="text-center py-12">
+    <p className="text-gray-500">Veri bulunamadı</p>
+  </div>
+) : (
+  <div>{/* Render data */}</div>
+)}
+```
+
+### 4. Form Validation
+```tsx
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+
+  // Client-side validation
+  if (!formData.name || !formData.email) {
+    toast?.showToast('error', 'Lütfen tüm alanları doldurun');
+    return;
+  }
+
+  try {
+    await apiClient.createUser(formData);
+    toast?.showToast('success', 'Kullanıcı oluşturuldu');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'İşlem başarısız';
+    toast?.showToast('error', message);
+  }
+};
+```
+
+---
+
+## 🔧 Git Workflow
+
+### Branch Naming
+```bash
+# Feature branches
+feature/user-profile-page
+feature/program-assignment
+
+# Bug fixes
+fix/login-redirect-issue
+fix/soft-delete-query
+
+# Documentation
+docs/update-readme
+docs/api-documentation
+
+# Refactoring
+refactor/auth-middleware
+refactor/api-client-types
+```
+
+### Commit Messages
+```bash
+# ✅ GOOD: Clear, descriptive
+git commit -m "feat: Add program assignment to My Students page"
+git commit -m "fix: Correct soft delete query in user controller"
+git commit -m "refactor: Extract common validation logic to middleware"
+git commit -m "docs: Update API documentation with new endpoints"
+git commit -m "chore: Update dependencies"
+
+# ❌ BAD: Vague, unclear
+git commit -m "update"
+git commit -m "fix bug"
+git commit -m "changes"
+```
+
+### Commit Types
+- `feat:` New feature
+- `fix:` Bug fix
+- `refactor:` Code refactoring
+- `docs:` Documentation
+- `style:` Code formatting (no logic change)
+- `test:` Add/update tests
+- `chore:` Build, dependencies, tooling
+
+### Git Flow
+```bash
+# 1. Create feature branch from main
+git checkout main
+git pull origin main
+git checkout -b feature/new-feature
+
+# 2. Work on feature
+git add .
+git commit -m "feat: Implement new feature"
+
+# 3. Keep updated with main
+git checkout main
+git pull origin main
+git checkout feature/new-feature
+git merge main
+
+# 4. Push and create PR
+git push origin feature/new-feature
+# Create Pull Request on GitHub
+
+# 5. After review, merge to main
+# Delete feature branch
+git branch -d feature/new-feature
+```
+
+---
+
+## 🧪 Testing Guidelines
+
+### Backend Tests (Jest + Supertest)
+```typescript
+describe('POST /api/users', () => {
+  it('should create a new user', async () => {
+    const response = await request(app)
+      .post('/api/users')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        firstName: 'John',
+        lastName: 'Doe',
+        email: 'john@test.com',
+        roleId: studentRoleId
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.user.email).toBe('john@test.com');
+  });
+
+  it('should return 403 if user lacks permission', async () => {
+    const response = await request(app)
+      .post('/api/users')
+      .set('Authorization', `Bearer ${studentToken}`)
+      .send({ /* data */ });
+
+    expect(response.status).toBe(403);
+  });
+});
+```
+
+### Testing Best Practices
+1. **AAA Pattern**: Arrange, Act, Assert
+2. **Test isolation**: Each test should be independent
+3. **Clean up**: Delete test data after tests
+4. **Mock external services**: Don't call real APIs
+5. **Edge cases**: Test error scenarios, not just happy path
+
+---
+
+## 📊 Performance Best Practices
+
+### Database Queries
+```typescript
+// ✅ GOOD: Use select to limit fields
+const users = await prisma.user.findMany({
+  select: {
+    id: true,
+    firstName: true,
+    lastName: true,
+    email: true
+  }
+});
+
+// ❌ BAD: Fetch all fields
+const users = await prisma.user.findMany(); // Includes all relations!
+```
+
+### Pagination (Always)
+```typescript
+// ✅ GOOD: Paginate large datasets
+const users = await prisma.user.findMany({
+  skip: (page - 1) * limit,
+  take: limit,
+  orderBy: { createdAt: 'desc' }
+});
+
+// ❌ BAD: Fetch everything
+const users = await prisma.user.findMany(); // Could be 10,000+ records!
+```
+
+### N+1 Query Problem
+```typescript
+// ✅ GOOD: Use include to eager load
+const programs = await prisma.workoutProgram.findMany({
+  include: {
+    createdByUser: true,
+    assignedUser: true,
+    programExercises: {
+      include: { exercise: true }
+    }
+  }
+});
+
+// ❌ BAD: Multiple queries in loop
+const programs = await prisma.workoutProgram.findMany();
+for (const program of programs) {
+  program.creator = await prisma.user.findUnique({ where: { id: program.createdBy } });
+}
+```
+
+---
+
+## 🚨 Common Mistakes to Avoid
+
+### ❌ Backend
+1. **Forgetting gymId filter** → Cross-gym data leakage
+2. **Using hard delete** → Data loss
+3. **Not checking deletedAt** → Showing deleted records
+4. **Trusting client input** → Security vulnerabilities
+5. **Generic error messages** → Exposing stack traces
+
+### ❌ Frontend
+1. **Using wrong apiClient methods** → Runtime errors
+2. **Wrong toast parameter order** → Type errors
+3. **Not handling loading states** → Poor UX
+4. **Missing ProtectedRoute wrapper** → Unauthorized access
+5. **Hardcoding API URLs** → Environment issues
+
+### ❌ Database
+1. **Missing indexes** → Slow queries
+2. **No foreign key constraints** → Data integrity issues
+3. **Wrong field types** → Type conversion errors
+4. **Missing timestamps** → Audit trail problems
+5. **No unique constraints** → Duplicate data
+
+---
+
+## ✅ Pre-Commit Checklist
+
+Before committing code, verify:
+
+- [ ] Multi-tenant: All queries have `gymId` filter
+- [ ] Soft delete: Using `deletedAt` not `.delete()`
+- [ ] Soft delete: Queries filter `deletedAt: null`
+- [ ] Auth: Protected routes use `authenticate` middleware
+- [ ] Validation: User input is validated
+- [ ] Error handling: Try-catch blocks present
+- [ ] Types: TypeScript types defined
+- [ ] Naming: Follows naming conventions
+- [ ] Comments: Complex logic is documented
+- [ ] Tests: New features have tests (if applicable)
+- [ ] Lint: No ESLint errors
+- [ ] Format: Code is properly formatted
+- [ ] Environment: No hardcoded secrets
+- [ ] Git: Commit message is descriptive
+
+---
+
+**Last Updated:** 14 Aralık 2025
+**Maintained By:** Development Team
+**Questions?** Check AGENT folder documentation or ask in team chat.
   body('videoUrl').optional().isURL().withMessage('Invalid video URL'),
 ];
 

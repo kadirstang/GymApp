@@ -8,6 +8,9 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  // Note: This warning is for Prisma 7. We're currently on Prisma 5.22.
+  // The 'url' property is still valid and required in Prisma 5.
+  // When upgrading to Prisma 7, move connection URL to prisma.config.ts
   url      = env("DATABASE_URL")
 }
 
@@ -19,6 +22,8 @@ model Gym {
   slug          String    @unique
   address       String?   @db.Text
   contactPhone  String?   @map("contact_phone")
+  contactEmail  String?   @map("contact_email")
+  website       String?
   logoUrl       String?   @map("logo_url")
   isActive      Boolean   @default(true) @map("is_active")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -57,20 +62,21 @@ model Role {
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  gymId        String    @map("gym_id") @db.Uuid
-  roleId       String    @map("role_id") @db.Uuid
-  email        String    @unique
-  passwordHash String    @map("password_hash")
-  firstName    String    @map("first_name")
-  lastName     String    @map("last_name")
-  phone        String?
-  avatarUrl    String?   @map("avatar_url")
-  birthDate    DateTime? @map("birth_date") @db.Date
-  gender       String?
-  createdAt    DateTime  @default(now()) @map("created_at")
-  updatedAt    DateTime  @updatedAt @map("updated_at")
-  deletedAt    DateTime? @map("deleted_at")
+  id                String    @id @default(uuid()) @db.Uuid
+  gymId             String    @map("gym_id") @db.Uuid
+  roleId            String    @map("role_id") @db.Uuid
+  email             String    @unique
+  passwordHash      String    @map("password_hash")
+  firstName         String    @map("first_name")
+  lastName          String    @map("last_name")
+  phone             String?
+  avatarUrl         String?   @map("avatar_url")
+  birthDate         DateTime? @map("birth_date") @db.Date
+  gender            String?
+  customPermissions Json?     @map("custom_permissions") @db.JsonB
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+  deletedAt         DateTime? @map("deleted_at")
 
   // Relations
   gym                   Gym                 @relation(fields: [gymId], references: [id], onDelete: Cascade)
@@ -83,6 +89,7 @@ model User {
   assignedPrograms      WorkoutProgram[]    @relation("ProgramAssignee")
   workoutLogs           WorkoutLog[]
   orders                Order[]
+  programSelections     UserProgramSelection[]
 
   @@map("users")
 }
@@ -154,20 +161,24 @@ model WorkoutProgram {
   gymId           String    @map("gym_id") @db.Uuid
   creatorId       String    @map("creator_id") @db.Uuid
   assignedUserId  String?   @map("assigned_user_id") @db.Uuid
+  categoryId      String?   @map("category_id") @db.Uuid
   name            String
   description     String?   @db.Text
   difficultyLevel String    @default("Beginner") @map("difficulty_level") // 'Beginner', 'Intermediate', 'Advanced'
+  durationWeeks   Int?      @map("duration_weeks") // 1-52 weeks, null = indefinite
   isPublic        Boolean   @default(false) @map("is_public") // true: everyone can see, false: only creator
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
   deletedAt       DateTime? @map("deleted_at")
 
   // Relations
-  gym              Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  creator          User              @relation("ProgramCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  assignedUser     User?             @relation("ProgramAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  gym              Gym                    @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  creator          User                   @relation("ProgramCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  assignedUser     User?                  @relation("ProgramAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  category         ProgramCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   programExercises ProgramExercise[]
   workoutLogs      WorkoutLog[]
+  userSelections   UserProgramSelection[]
 
   @@map("workout_programs")
 }
@@ -230,6 +241,30 @@ model WorkoutLogEntry {
   @@map("workout_log_entries")
 }
 
+// User Program Selection System
+
+model UserProgramSelection {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  programId      String    @map("program_id") @db.Uuid
+  selectionType  String    @map("selection_type") // 'current' | 'favorite'
+  startDate      DateTime  @map("start_date") @default(now())
+  endDate        DateTime? @map("end_date") // null = active, filled = completed/switched
+  completedWeeks Int       @default(0) @map("completed_weeks")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program WorkoutProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+
+  // User can have only ONE active 'current' program
+  @@unique([userId, selectionType, isActive], name: "unique_active_current_program", map: "unique_active_current_program")
+  @@index([userId, isActive])
+  @@map("user_program_selections")
+}
+
 // Equipment & QR System
 
 model Equipment {
@@ -252,6 +287,21 @@ model Equipment {
 }
 
 // Marketplace (Pre-Order) System
+
+model ProgramCategory {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    // Strength Training, Cardio, Flexibility, etc.
+  description String?   @db.Text
+  icon        String?   // Icon name for mobile display
+  orderIndex  Int       @default(0) @map("order_index")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  programs WorkoutProgram[]
+
+  @@map("program_categories")
+}
 
 model ProductCategory {
   id        String    @id @default(uuid()) @db.Uuid
@@ -298,6 +348,7 @@ model Order {
   orderNumber String    @unique @map("order_number")
   totalAmount Decimal   @map("total_amount") @db.Decimal(10, 2)
   status      String    @default("pending_approval") // 'pending_approval', 'prepared', 'completed', 'cancelled'
+  metadata    Json?     @db.JsonB // Store cancellation reasons, notes, payment method, delivery notes
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
   deletedAt   DateTime? @map("deleted_at")

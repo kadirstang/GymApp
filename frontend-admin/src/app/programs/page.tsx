@@ -3,11 +3,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Search, Pencil, Trash2, ClipboardList, Users, Dumbbell } from 'lucide-react';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient } from '@/lib/api-client';
 import { WorkoutProgram, User } from '@/types/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { Button, Input, Modal, Table, Badge, Card, Select, Textarea } from '@/components/ui';
+import { Button, Input, Modal, Table, Badge, Card, Select, Textarea, ConfirmDialog } from '@/components/ui';
 import type { Column } from '@/components/ui';
 
 interface ProgramFormData {
@@ -31,10 +33,15 @@ export default function ProgramsPage() {
   const [students, setStudents] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingProgram, setEditingProgram] = useState<WorkoutProgram | null>(null);
-  const [deletingProgram, setDeletingProgram] = useState<WorkoutProgram | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; program: WorkoutProgram | null }>({ isOpen: false, program: null });
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Assign student modal
+  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [assigningProgram, setAssigningProgram] = useState<WorkoutProgram | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
   const isOwner = user?.role?.name === 'GymOwner';
   const isTrainer = user?.role?.name === 'Trainer';
@@ -181,23 +188,51 @@ export default function ProgramsPage() {
     }
   };
 
-  const handleOpenDeleteModal = (program: WorkoutProgram) => {
-    setDeletingProgram(program);
-    setIsDeleteModalOpen(true);
+  const handleDeleteClick = (program: WorkoutProgram) => {
+    setDeleteDialog({ isOpen: true, program });
   };
 
-  const handleDelete = async () => {
-    if (!deletingProgram) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.program) return;
 
+    setIsDeleting(true);
     try {
-      await apiClient.deleteProgram(deletingProgram.id);
+      await apiClient.deleteProgram(deleteDialog.program.id);
       toast.success('Program başarıyla silindi');
-      setIsDeleteModalOpen(false);
-      setDeletingProgram(null);
       fetchPrograms();
+      setDeleteDialog({ isOpen: false, program: null });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Silme işlemi sırasında hata oluştu';
       toast.error(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleOpenAssignModal = (program: WorkoutProgram) => {
+    setAssigningProgram(program);
+    setSelectedStudentId(program.assignedUserId || '');
+    setIsAssignModalOpen(true);
+  };
+
+  const handleAssignStudent = async () => {
+    if (!assigningProgram) return;
+
+    try {
+      setIsSubmitting(true);
+      await apiClient.updateProgram(assigningProgram.id, {
+        assignedUserId: selectedStudentId || undefined,
+      });
+      toast.success(selectedStudentId ? 'Öğrenci başarıyla atandı' : 'Atama kaldırıldı');
+      setIsAssignModalOpen(false);
+      setAssigningProgram(null);
+      setSelectedStudentId('');
+      fetchPrograms();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Atama işlemi sırasında hata oluştu';
+      toast.error(message);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -245,6 +280,23 @@ export default function ProgramsPage() {
       },
     },
     {
+      key: 'assignedUser',
+      title: 'Atanmış Öğrenci',
+      render: (row) => {
+        if (row.assignedUser) {
+          return (
+            <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-indigo-100 text-indigo-800">
+              <Users size={12} className="mr-1" />
+              {row.assignedUser.firstName} {row.assignedUser.lastName}
+            </span>
+          );
+        }
+        return (
+          <span className="text-gray-400 text-sm">—</span>
+        );
+      },
+    },
+    {
       key: 'creator',
       title: 'Oluşturan',
       render: (row) => `${row.createdByUser?.firstName || ''} ${row.createdByUser?.lastName || ''}`,
@@ -265,6 +317,17 @@ export default function ProgramsPage() {
             >
               Egzersizler
             </Button>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => handleOpenAssignModal(row)}
+                leftIcon={<Users size={16} />}
+                title="Öğrenci ata veya atamasını kaldır"
+              >
+                {row.assignedUser ? 'Değiştir' : 'Ata'}
+              </Button>
+            )}
             <Button
               size="sm"
               variant={canEdit ? 'ghost' : 'secondary'}
@@ -279,7 +342,7 @@ export default function ProgramsPage() {
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() => handleOpenDeleteModal(row)}
+                onClick={() => handleDeleteClick(row)}
                 leftIcon={<Trash2 size={16} />}
               >
                 Sil
@@ -292,7 +355,9 @@ export default function ProgramsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <ProtectedRoute>
+      <DashboardLayout>
+        <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -422,27 +487,84 @@ export default function ProgramsPage() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, program: null })}
+        onConfirm={handleDeleteConfirm}
         title="Programı Sil"
+        message={`"${deleteDialog.program?.name}" programını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Sil"
+        cancelText="İptal"
+        variant="danger"
+        isLoading={isDeleting}
+      />
+
+      {/* Assign Student Modal */}
+      <Modal
+        isOpen={isAssignModalOpen}
+        onClose={() => setIsAssignModalOpen(false)}
+        title="Öğrenci Ata"
         size="sm"
         footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>
-              İptal
-            </Button>
-            <Button variant="danger" onClick={handleDelete}>
-              Sil
-            </Button>
+          <div className="flex items-center justify-between gap-3 w-full">
+            {assigningProgram?.assignedUserId && (
+              <Button
+                variant="danger"
+                onClick={() => setSelectedStudentId('')}
+                disabled={isSubmitting}
+              >
+                Atamasını Kaldır
+              </Button>
+            )}
+            <div className="flex items-center gap-3 ml-auto">
+              <Button
+                variant="secondary"
+                onClick={() => setIsAssignModalOpen(false)}
+                disabled={isSubmitting}
+              >
+                İptal
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleAssignStudent}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+              </Button>
+            </div>
           </div>
         }
       >
-        <p className="text-gray-700">
-          <strong>{deletingProgram?.name}</strong> programını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-        </p>
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-gray-600 mb-3">
+              <strong>{assigningProgram?.name}</strong> programını bir öğrenciye atayın.
+            </p>
+            <Select
+              label="Öğrenci"
+              value={selectedStudentId}
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+              options={[
+                { value: '', label: 'Seçiniz...' },
+                ...students.map(s => ({
+                  value: s.id,
+                  label: `${s.firstName} ${s.lastName} (${s.email})`,
+                })),
+              ]}
+            />
+          </div>
+          {students.length === 0 && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+              <p className="text-sm text-yellow-800">
+                ⚠️ Henüz öğrenci bulunmamaktadır. Önce öğrenci eklemeniz gerekiyor.
+              </p>
+            </div>
+          )}
+        </div>
       </Modal>
-    </div>
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }

@@ -48,7 +48,7 @@ const getGyms = async (req, res) => {
             prisma.gym.count({ where })
         ]);
         return (0, response_js_1.successResponse)(res, {
-            gyms,
+            items: gyms,
             pagination: {
                 total,
                 page: Number(page),
@@ -192,7 +192,7 @@ exports.createGym = createGym;
 const updateGym = async (req, res) => {
     try {
         const { id } = req.params;
-        const { name, slug, address, contactPhone, logoUrl } = req.body;
+        const { name, slug, address, contactPhone, contactEmail, website, logoUrl } = req.body;
         const user = req.user;
         const where = {
             id,
@@ -220,6 +220,8 @@ const updateGym = async (req, res) => {
                 ...(slug && { slug }),
                 ...(address !== undefined && { address }),
                 ...(contactPhone !== undefined && { contactPhone }),
+                ...(contactEmail !== undefined && { contactEmail }),
+                ...(website !== undefined && { website }),
                 ...(logoUrl !== undefined && { logoUrl })
             }
         });

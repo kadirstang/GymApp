@@ -68,6 +68,10 @@ router.put('/:id/password', [
         .withMessage('New password must be at least 6 characters'),
     validate,
 ], userController.changePassword);
+router.patch('/:id/custom-permissions', [
+    (0, express_validator_1.body)('customPermissions').isObject().withMessage('Custom permissions must be an object'),
+    validate,
+], gymIsolationMiddleware.verifySameGymUser('id'), rbacMiddleware.requirePermission('users.update'), userController.updateCustomPermissions);
 router.delete('/:id', gymIsolationMiddleware.verifySameGymUser('id'), rbacMiddleware.requirePermission('users.delete'), userController.deleteUser);
 router.get('/:id/measurements', [
     (0, express_validator_1.query)('limit').optional().isInt({ min: 1, max: 100 }).withMessage('Limit must be between 1 and 100'),

@@ -225,7 +225,7 @@ export const createGym = async (req: Request, res: Response) => {
 export const updateGym = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, slug, address, contactPhone, logoUrl } = req.body;
+    const { name, slug, address, contactPhone, contactEmail, website, logoUrl } = req.body;
     const user = (req as any).user;
 
     // SuperAdmin can update any gym, GymOwner can only update their own
@@ -261,6 +261,8 @@ export const updateGym = async (req: Request, res: Response) => {
         ...(slug && { slug }),
         ...(address !== undefined && { address }),
         ...(contactPhone !== undefined && { contactPhone }),
+        ...(contactEmail !== undefined && { contactEmail }),
+        ...(website !== undefined && { website }),
         ...(logoUrl !== undefined && { logoUrl })
       }
     });

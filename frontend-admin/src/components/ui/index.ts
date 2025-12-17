@@ -19,5 +19,7 @@ export type { BadgeProps } from './Badge';
 export { Card } from './Card';
 export type { CardProps } from './Card';
 
+export { ConfirmDialog } from './ConfirmDialog';
+
 export { Table } from './Table';
 export type { TableProps, Column } from './Table';

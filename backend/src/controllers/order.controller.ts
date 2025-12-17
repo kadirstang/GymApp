@@ -45,7 +45,7 @@ const generateOrderNumber = async (gymId: string): Promise<string> => {
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const { gymId, userId, role } = req.user!;
-    const { items } = req.body;
+    const { items, metadata } = req.body;
 
     // Students can only create orders for themselves
     // Trainers/Owners can create orders for any user
@@ -145,6 +145,7 @@ export const createOrder = async (req: Request, res: Response) => {
           orderNumber,
           totalAmount,
           status: 'pending_approval',
+          metadata: metadata || null,
           items: {
             create: orderItemsData,
           },
@@ -157,6 +158,12 @@ export const createOrder = async (req: Request, res: Response) => {
                   id: true,
                   name: true,
                   imageUrl: true,
+                  category: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
                 },
               },
             },
@@ -285,6 +292,12 @@ export const getOrders = async (req: Request, res: Response) => {
                   id: true,
                   name: true,
                   imageUrl: true,
+                  category: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
                 },
               },
             },
@@ -387,7 +400,7 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const { gymId, role } = req.user!;
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, metadata } = req.body;
 
     // Only trainers and owners can update order status
     if (role === 'Student') {
@@ -424,10 +437,13 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
     // If cancelling order, restore stock
     if (status === 'cancelled' && existing.status !== 'cancelled') {
       await prisma.$transaction(async (tx) => {
-        // Update order status
+        // Update order status with metadata
         await tx.order.update({
           where: { id },
-          data: { status },
+          data: {
+            status,
+            metadata: metadata || existing.metadata,
+          },
         });
 
         // Restore stock for each item
@@ -443,10 +459,13 @@ export const updateOrderStatus = async (req: Request, res: Response) => {
         }
       });
     } else {
-      // Just update status
+      // Update status and metadata
       await prisma.order.update({
         where: { id },
-        data: { status },
+        data: {
+          status,
+          metadata: metadata !== undefined ? metadata : existing.metadata,
+        },
       });
     }
 

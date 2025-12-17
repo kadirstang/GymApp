@@ -5,13 +5,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const express_validator_1 = require("express-validator");
-const auth_middleware_js_1 = require("../middleware/auth.middleware.js");
-const rbac_middleware_js_1 = require("../middleware/rbac.middleware.js");
-const validation_middleware_js_1 = require("../middleware/validation.middleware.js");
-const program_controller_js_1 = require("../controllers/program.controller.js");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const rbac_middleware_1 = require("../middleware/rbac.middleware");
+const validation_middleware_1 = require("../middleware/validation.middleware");
+const program_controller_1 = require("../controllers/program.controller");
+const programExercise_routes_1 = __importDefault(require("./programExercise.routes"));
 const router = express_1.default.Router();
-router.get('/stats', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.read'), program_controller_js_1.getProgramStats);
-router.get('/', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.read'), [
+router.use('/:programId/exercises', programExercise_routes_1.default);
+router.get('/stats', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.read'), program_controller_1.getProgramStats);
+router.get('/', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.read'), [
     (0, express_validator_1.query)('page')
         .optional()
         .isInt({ min: 1 })
@@ -36,13 +38,13 @@ router.get('/', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requ
         .optional()
         .isUUID()
         .withMessage('Creator ID must be a valid UUID'),
-], validation_middleware_js_1.handleValidationErrors, program_controller_js_1.getPrograms);
-router.get('/:id', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.read'), [
+], validation_middleware_1.handleValidationErrors, program_controller_1.getPrograms);
+router.get('/:id', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.read'), [
     (0, express_validator_1.param)('id')
         .isUUID()
         .withMessage('Invalid program ID'),
-], validation_middleware_js_1.handleValidationErrors, program_controller_js_1.getProgramById);
-router.post('/', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.create'), [
+], validation_middleware_1.handleValidationErrors, program_controller_1.getProgramById);
+router.post('/', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.create'), [
     (0, express_validator_1.body)('name')
         .trim()
         .notEmpty()
@@ -62,8 +64,8 @@ router.post('/', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.req
         .optional({ nullable: true, checkFalsy: true })
         .isUUID()
         .withMessage('Assigned user ID must be a valid UUID'),
-], validation_middleware_js_1.handleValidationErrors, program_controller_js_1.createProgram);
-router.put('/:id', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.update'), [
+], validation_middleware_1.handleValidationErrors, program_controller_1.createProgram);
+router.put('/:id', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.update'), [
     (0, express_validator_1.param)('id')
         .isUUID()
         .withMessage('Invalid program ID'),
@@ -87,13 +89,13 @@ router.put('/:id', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.r
         .optional({ nullable: true, checkFalsy: true })
         .isUUID()
         .withMessage('Assigned user ID must be a valid UUID'),
-], validation_middleware_js_1.handleValidationErrors, program_controller_js_1.updateProgram);
-router.delete('/:id', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.delete'), [
+], validation_middleware_1.handleValidationErrors, program_controller_1.updateProgram);
+router.delete('/:id', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.delete'), [
     (0, express_validator_1.param)('id')
         .isUUID()
         .withMessage('Invalid program ID'),
-], validation_middleware_js_1.handleValidationErrors, program_controller_js_1.deleteProgram);
-router.post('/:id/clone', auth_middleware_js_1.authenticate, (0, rbac_middleware_js_1.requirePermission)('programs.create'), [
+], validation_middleware_1.handleValidationErrors, program_controller_1.deleteProgram);
+router.post('/:id/clone', auth_middleware_1.authenticate, (0, rbac_middleware_1.requirePermission)('programs.create'), [
     (0, express_validator_1.param)('id')
         .isUUID()
         .withMessage('Invalid program ID'),
@@ -106,6 +108,6 @@ router.post('/:id/clone', auth_middleware_js_1.authenticate, (0, rbac_middleware
         .optional({ nullable: true, checkFalsy: true })
         .isUUID()
         .withMessage('Assigned user ID must be a valid UUID'),
-], validation_middleware_js_1.handleValidationErrors, program_controller_js_1.cloneProgram);
+], validation_middleware_1.handleValidationErrors, program_controller_1.cloneProgram);
 exports.default = router;
 //# sourceMappingURL=program.routes.js.map

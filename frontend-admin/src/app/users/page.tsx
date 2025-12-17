@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Trash2, Users as UsersIcon, GraduationCap } from 'lucide-react';
+import { Search, Trash2, Users as UsersIcon, GraduationCap, Upload, User as UserIcon } from 'lucide-react';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient } from '@/lib/api-client';
 import { User } from '@/types/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { Button, Input, Modal, Table, Badge, Card } from '@/components/ui';
+import { Button, Input, Table, Badge, Card, ConfirmDialog, Modal } from '@/components/ui';
+import { FileUpload } from '@/components/ui/FileUpload';
 import type { Column } from '@/components/ui';
 
 export default function UsersPage() {
@@ -14,8 +17,10 @@ export default function UsersPage() {
   const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [deletingUser, setDeletingUser] = useState<User | null>(null);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; user: User | null }>({ isOpen: false, user: null });
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [avatarModal, setAvatarModal] = useState<{ isOpen: boolean; user: User | null }>({ isOpen: false, user: null });
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const isTrainer = user?.role?.name === 'Trainer';
   const canManage = !isTrainer;
@@ -64,23 +69,49 @@ export default function UsersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPage, debouncedSearch, roleFilter]);
 
-  const handleOpenDeleteModal = (user: User) => {
-    setDeletingUser(user);
-    setIsDeleteModalOpen(true);
+  const handleDeleteClick = (userToDelete: User) => {
+    setDeleteDialog({ isOpen: true, user: userToDelete });
   };
 
-  const handleDelete = async () => {
-    if (!deletingUser) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.user) return;
 
+    setIsDeleting(true);
     try {
-      await apiClient.deleteUser(deletingUser.id);
+      await apiClient.deleteUser(deleteDialog.user.id);
       toast.success('Kullanıcı başarıyla silindi');
-      setIsDeleteModalOpen(false);
-      setDeletingUser(null);
       fetchUsers();
+      setDeleteDialog({ isOpen: false, user: null });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Silme işlemi sırasında hata oluştu';
       toast.error(message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleAvatarClick = (userToUpdate: User) => {
+    setAvatarModal({ isOpen: true, user: userToUpdate });
+  };
+
+  const handleAvatarUpload = async (file: File): Promise<string> => {
+    if (!avatarModal.user) throw new Error('No user selected');
+
+    try {
+      setUploadingAvatar(true);
+      const response = await apiClient.uploadUserAvatar(avatarModal.user.id, file);
+      if (response.data?.avatarUrl) {
+        toast.success('Avatar başarıyla güncellendi');
+        fetchUsers();
+        return `http://localhost:3001${response.data.avatarUrl}`;
+      }
+      throw new Error('Avatar URL alınamadı');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Avatar yükleme başarısız';
+      toast.error(message);
+      throw error;
+    } finally {
+      setUploadingAvatar(false);
     }
   };
 
@@ -99,6 +130,39 @@ export default function UsersPage() {
   };
 
   const columns: Column<User>[] = [
+    {
+      key: 'avatar',
+      title: 'Avatar',
+      render: (row) => (
+        <div className="relative group">
+          <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
+            {row.avatarUrl ? (
+              <img
+                src={`http://localhost:3001${row.avatarUrl}`}
+                alt={`${row.firstName} ${row.lastName}`}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <UserIcon className="w-6 h-6 text-gray-400" />
+            )}
+          </div>
+          {canManage && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleAvatarClick(row);
+              }}
+              className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer z-10"
+              title="Upload avatar"
+            >
+              <Upload className="w-4 h-4 text-white" />
+            </button>
+          )}
+        </div>
+      ),
+    },
     {
       key: 'firstName',
       title: 'Ad Soyad',
@@ -149,7 +213,7 @@ export default function UsersPage() {
           <Button
             variant="danger"
             size="sm"
-            onClick={() => handleOpenDeleteModal(row)}
+            onClick={() => handleDeleteClick(row)}
           >
             <Trash2 className="w-4 h-4" />
           </Button>
@@ -159,7 +223,9 @@ export default function UsersPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <ProtectedRoute>
+      <DashboardLayout>
+        <div className="space-y-6">
       {/* Header */}
       <Card>
         <div className="flex items-center justify-between">
@@ -219,29 +285,48 @@ export default function UsersPage() {
         />
       </Card>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, user: null })}
+        onConfirm={handleDeleteConfirm}
         title="Kullanıcıyı Sil"
+        message={`"${deleteDialog.user?.firstName} ${deleteDialog.user?.lastName}" kullanıcısını silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Sil"
+        cancelText="İptal"
+        variant="danger"
+        isLoading={isDeleting}
+      />
+
+      {/* Avatar Upload Modal */}
+      <Modal
+        isOpen={avatarModal.isOpen}
+        onClose={() => setAvatarModal({ isOpen: false, user: null })}
+        title="Avatar Yükle"
+        size="md"
       >
-        <div className="space-y-4">
-          <p className="text-gray-600">
-            {deletingUser?.firstName} {deletingUser?.lastName} kullanıcısını silmek istediğinize emin misiniz?
-          </p>
-          <div className="flex gap-3 justify-end">
-            <Button
-              variant="secondary"
-              onClick={() => setIsDeleteModalOpen(false)}
-            >
-              İptal
-            </Button>
-            <Button variant="danger" onClick={handleDelete}>
-              Sil
-            </Button>
+        {avatarModal.user && (
+          <div className="space-y-4">
+            <div className="text-center">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">{avatarModal.user.firstName} {avatarModal.user.lastName}</span> için avatar yükleyin
+              </p>
+            </div>
+            <FileUpload
+              label="Profile Photo"
+              accept="image/*"
+              maxSize={5 * 1024 * 1024}
+              value={avatarModal.user.avatarUrl ? `http://localhost:3001${avatarModal.user.avatarUrl}` : null}
+              onChange={() => {}}
+              onUpload={handleAvatarUpload}
+              preview={true}
+              helperText="Upload profile photo (PNG, JPG, GIF, WebP). Maximum 5MB. Changes are saved immediately."
+            />
           </div>
-        </div>
+        )}
       </Modal>
-    </div>
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }

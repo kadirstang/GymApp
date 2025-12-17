@@ -14,6 +14,7 @@ const equipmentRoutes = require('./equipment.routes').default;
 const productCategoryRoutes = require('./productCategory.routes').default;
 const productRoutes = require('./product.routes').default;
 const orderRoutes = require('./order.routes').default;
+const analyticsRoutes = require('./analytics.routes').default;
 
 // Mount routes
 router.use('/auth', authRoutes);
@@ -28,6 +29,7 @@ router.use('/equipment', equipmentRoutes);
 router.use('/product-categories', productCategoryRoutes);
 router.use('/products', productRoutes);
 router.use('/orders', orderRoutes);
+router.use('/analytics', analyticsRoutes);
 
 // Test route
 router.get('/test', (req, res) => {

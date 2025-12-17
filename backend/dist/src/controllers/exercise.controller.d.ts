@@ -6,4 +6,5 @@ export declare const updateExercise: (req: Request, res: Response) => Promise<an
 export declare const deleteExercise: (req: Request, res: Response) => Promise<any>;
 export declare const getMuscleGroups: (req: Request, res: Response) => Promise<any>;
 export declare const getExerciseStats: (req: Request, res: Response) => Promise<any>;
+export declare const uploadExerciseVideo: (req: Request, res: Response) => Promise<any>;
 //# sourceMappingURL=exercise.controller.d.ts.map

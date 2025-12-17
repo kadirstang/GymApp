@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/rbac.middleware';
 import { handleValidationErrors } from '../middleware/validation.middleware';
+import { exerciseVideoUpload } from '../middleware/upload.middleware';
 import {
   getExercises,
   getExerciseById,
@@ -10,7 +11,8 @@ import {
   updateExercise,
   deleteExercise,
   getMuscleGroups,
-  getExerciseStats
+  getExerciseStats,
+  uploadExerciseVideo
 } from '../controllers/exercise.controller';
 
 const router = express.Router();
@@ -158,6 +160,23 @@ router.delete(
   ],
   handleValidationErrors,
   deleteExercise
+);
+
+/**
+ * @route   POST /api/exercises/:id/video
+ * @desc    Upload exercise video/image
+ * @access  Private (exercises.update)
+ */
+router.post(
+  '/:id/video',
+  authenticate,
+  requirePermission('exercises.update'),
+  [
+    param('id').isUUID().withMessage('Invalid exercise ID')
+  ],
+  handleValidationErrors,
+  exerciseVideoUpload.single('video'),
+  uploadExerciseVideo
 );
 
 export default router;

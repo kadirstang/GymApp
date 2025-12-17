@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Trash2, GripVertical, Save } from 'lucide-react';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient } from '@/lib/api-client';
 import { WorkoutProgram, ProgramExercise, Exercise } from '@/types/api';
 import { useToast } from '@/contexts/ToastContext';
@@ -138,181 +140,185 @@ export default function ProgramExercisesPage() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.push('/programs')}
-            leftIcon={<ArrowLeft size={20} />}
-          >
-            Geri
-          </Button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              {program?.name || 'Program Egzersizleri'}
-            </h1>
-            <p className="text-gray-600 mt-1">Program içindeki egzersizleri yönetin</p>
-          </div>
-        </div>
-        <Button onClick={handleOpenModal} leftIcon={<Plus size={20} />}>
-          Egzersiz Ekle
-        </Button>
-      </div>
-
-      {/* Program Info */}
-      {program && (
-        <Card>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <p className="text-sm text-gray-500">Zorluk Seviyesi</p>
-              <p className="font-semibold">{program.difficultyLevel}</p>
+    <ProtectedRoute>
+      <DashboardLayout>
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button
+                variant="ghost"
+                onClick={() => router.push('/programs')}
+                leftIcon={<ArrowLeft size={20} />}
+              >
+                Geri
+              </Button>
+              <div>
+                <h1 className="text-3xl font-bold text-gray-900">
+                  {program?.name || 'Program Egzersizleri'}
+                </h1>
+                <p className="text-gray-600 mt-1">Program içindeki egzersizleri yönetin</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Toplam Egzersiz</p>
-              <p className="font-semibold">{programExercises.length}</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-500">Atanan Öğrenci</p>
-              <p className="font-semibold">
-                {program.assignedUser
-                  ? `${program.assignedUser.firstName} ${program.assignedUser.lastName}`
-                  : 'Genel Program'}
-              </p>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Exercises List */}
-      <Card>
-        {isLoading ? (
-          <div className="text-center py-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Yükleniyor...</p>
-          </div>
-        ) : programExercises.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-gray-500">Henüz egzersiz eklenmemiş</p>
-            <Button onClick={handleOpenModal} className="mt-4" leftIcon={<Plus size={20} />}>
-              İlk Egzersizi Ekle
+            <Button onClick={handleOpenModal} leftIcon={<Plus size={20} />}>
+              Egzersiz Ekle
             </Button>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {programExercises.map((pe, index) => (
-              <div
-                key={pe.id}
-                className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center gap-2 text-gray-400">
-                  <GripVertical size={20} />
-                  <span className="font-semibold text-lg">{index + 1}</span>
+
+          {/* Program Info */}
+          {program && (
+            <Card>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <p className="text-sm text-gray-500">Zorluk Seviyesi</p>
+                  <p className="font-semibold">{program.difficultyLevel}</p>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg">{pe.exercise?.name || 'Egzersiz'}</h3>
-                  <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
-                    <span>
-                      <strong>Sets:</strong> {pe.sets}
-                    </span>
-                    <span>
-                      <strong>Reps:</strong> {pe.reps}
-                    </span>
-                    <span>
-                      <strong>Dinlenme:</strong> {pe.restTimeSeconds}s
-                    </span>
-                  </div>
-                  {pe.notes && (
-                    <p className="text-sm text-gray-500 mt-1">
-                      <strong>Not:</strong> {pe.notes}
-                    </p>
-                  )}
+                <div>
+                  <p className="text-sm text-gray-500">Toplam Egzersiz</p>
+                  <p className="font-semibold">{programExercises.length}</p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="danger"
-                  onClick={() => handleDelete(pe.id)}
-                  leftIcon={<Trash2 size={16} />}
-                >
-                  Çıkar
+                <div>
+                  <p className="text-sm text-gray-500">Atanan Öğrenci</p>
+                  <p className="font-semibold">
+                    {program.assignedUser
+                      ? `${program.assignedUser.firstName} ${program.assignedUser.lastName}`
+                      : 'Genel Program'}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Exercises List */}
+          <Card>
+            {isLoading ? (
+              <div className="text-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                <p className="mt-4 text-gray-600">Yükleniyor...</p>
+              </div>
+            ) : programExercises.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-500">Henüz egzersiz eklenmemiş</p>
+                <Button onClick={handleOpenModal} className="mt-4" leftIcon={<Plus size={20} />}>
+                  İlk Egzersizi Ekle
                 </Button>
               </div>
-            ))}
-          </div>
-        )}
-      </Card>
+            ) : (
+              <div className="space-y-4">
+                {programExercises.map((pe, index) => (
+                  <div
+                    key={pe.id}
+                    className="flex items-center gap-4 p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
+                  >
+                    <div className="flex items-center gap-2 text-gray-400">
+                      <GripVertical size={20} />
+                      <span className="font-semibold text-lg">{index + 1}</span>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-lg">{pe.exercise?.name || 'Egzersiz'}</h3>
+                      <div className="flex items-center gap-4 mt-1 text-sm text-gray-600">
+                        <span>
+                          <strong>Sets:</strong> {pe.sets}
+                        </span>
+                        <span>
+                          <strong>Reps:</strong> {pe.reps}
+                        </span>
+                        <span>
+                          <strong>Dinlenme:</strong> {pe.restTimeSeconds}s
+                        </span>
+                      </div>
+                      {pe.notes && (
+                        <p className="text-sm text-gray-500 mt-1">
+                          <strong>Not:</strong> {pe.notes}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => handleDelete(pe.id)}
+                      leftIcon={<Trash2 size={16} />}
+                    >
+                      Çıkar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
 
-      {/* Add Exercise Modal */}
-      <Modal
-        isOpen={isModalOpen}
-        onClose={handleCloseModal}
-        title="Egzersiz Ekle"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={handleCloseModal}>
-              İptal
-            </Button>
-            <Button onClick={handleSubmit} isLoading={isSubmitting} leftIcon={<Save size={20} />}>
-              Ekle
-            </Button>
-          </div>
-        }
-      >
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {availableExercises.length === 0 ? (
-            <div className="text-center py-4 text-gray-500">
-              <p>Egzersiz listesi yükleniyor veya hiç egzersiz yok...</p>
-              <p className="text-sm mt-2">Önce egzersiz eklemeniz gerekebilir.</p>
-            </div>
-          ) : (
-            <Select
-              label="Egzersiz"
-              value={formData.exerciseId}
-              onChange={(e) => setFormData({ ...formData, exerciseId: e.target.value })}
-              required
-              options={[
-                { value: '', label: 'Egzersiz seçin...' },
-                ...(availableExercises || []).map((ex) => ({
-                  value: ex.id,
-                  label: `${ex.name} (${ex.targetMuscleGroup})`,
-                })),
-              ]}
-            />
-          )}
-          <div className="grid grid-cols-2 gap-4">
-            <Input
-              label="Set Sayısı"
-              type="number"
-              min="1"
-              value={formData.sets}
-              onChange={(e) => setFormData({ ...formData, sets: parseInt(e.target.value) })}
-              required
-            />
-            <Input
-              label="Tekrar (örn: 10-12)"
-              value={formData.reps}
-              onChange={(e) => setFormData({ ...formData, reps: e.target.value })}
-              required
-              placeholder="8-10"
-            />
-          </div>
-          <Input
-            label="Dinlenme Süresi (saniye)"
-            type="number"
-            min="0"
-            value={formData.restTimeSeconds}
-            onChange={(e) => setFormData({ ...formData, restTimeSeconds: parseInt(e.target.value) })}
-            required
-          />
-          <Input
-            label="Notlar (Opsiyonel)"
-            value={formData.notes}
-            onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            placeholder="Özel notlar..."
-          />
-        </form>
-      </Modal>
-    </div>
+          {/* Add Exercise Modal */}
+          <Modal
+            isOpen={isModalOpen}
+            onClose={handleCloseModal}
+            title="Egzersiz Ekle"
+            footer={
+              <div className="flex items-center justify-end gap-3">
+                <Button variant="secondary" onClick={handleCloseModal}>
+                  İptal
+                </Button>
+                <Button onClick={handleSubmit} isLoading={isSubmitting} leftIcon={<Save size={20} />}>
+                  Ekle
+                </Button>
+              </div>
+            }
+          >
+            <form onSubmit={handleSubmit} className="space-y-4">
+              {availableExercises.length === 0 ? (
+                <div className="text-center py-4 text-gray-500">
+                  <p>Egzersiz listesi yükleniyor veya hiç egzersiz yok...</p>
+                  <p className="text-sm mt-2">Önce egzersiz eklemeniz gerekebilir.</p>
+                </div>
+              ) : (
+                <Select
+                  label="Egzersiz"
+                  value={formData.exerciseId}
+                  onChange={(e) => setFormData({ ...formData, exerciseId: e.target.value })}
+                  required
+                  options={[
+                    { value: '', label: 'Egzersiz seçin...' },
+                    ...(availableExercises || []).map((ex) => ({
+                      value: ex.id,
+                      label: `${ex.name} (${ex.targetMuscleGroup})`,
+                    })),
+                  ]}
+                />
+              )}
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Set Sayısı"
+                  type="number"
+                  min="1"
+                  value={formData.sets}
+                  onChange={(e) => setFormData({ ...formData, sets: parseInt(e.target.value) })}
+                  required
+                />
+                <Input
+                  label="Tekrar (örn: 10-12)"
+                  value={formData.reps}
+                  onChange={(e) => setFormData({ ...formData, reps: e.target.value })}
+                  required
+                  placeholder="8-10"
+                />
+              </div>
+              <Input
+                label="Dinlenme Süresi (saniye)"
+                type="number"
+                min="0"
+                value={formData.restTimeSeconds}
+                onChange={(e) => setFormData({ ...formData, restTimeSeconds: parseInt(e.target.value) })}
+                required
+              />
+              <Input
+                label="Notlar (Opsiyonel)"
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Özel notlar..."
+              />
+            </form>
+          </Modal>
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }

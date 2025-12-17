@@ -29,18 +29,41 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV:-development}
-      PORT: ${BACKEND_PORT:-3000}
+      PORT: 3001
       DATABASE_URL: postgresql://${DB_USER:-gymapp}:${DB_PASSWORD:-gymapp123}@db:5432/${DB_NAME:-gymapp_db}?schema=public
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      - "3001:3001"
     volumes:
       - ./backend:/app
       - /app/node_modules
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - gymapp_network
+    command: npm run dev
+
+  # Next.js Frontend Admin Dashboard
+  frontend-admin:
+    build:
+      context: ./frontend-admin
+      dockerfile: Dockerfile
+    container_name: gymapp_frontend_admin
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      NEXT_PUBLIC_API_URL: http://localhost:3001/api
+      PORT: 3002
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./frontend-admin:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
     networks:
       - gymapp_network
     command: npm run dev

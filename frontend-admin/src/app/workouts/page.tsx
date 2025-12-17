@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { Card, Table, Badge, Input, Button } from '@/components/ui';
 import { Column } from '@/components/ui/Table';
 import { apiClient } from '@/lib/api-client';
@@ -36,6 +39,7 @@ interface WorkoutLogItem {
 }
 
 export default function WorkoutsPage() {
+  const router = useRouter();
   const [workoutLogs, setWorkoutLogs] = useState<WorkoutLogItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -164,13 +168,11 @@ export default function WorkoutsPage() {
     {
       key: 'actions',
       title: 'İşlemler',
-      render: () => (
+      render: (log) => (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => {
-            showError('Detay sayfası yakında eklenecek');
-          }}
+          onClick={() => router.push(`/workout-logs/${log.id}`)}
         >
           <Eye className="w-4 h-4" />
         </Button>
@@ -179,7 +181,9 @@ export default function WorkoutsPage() {
   ];
 
   return (
-    <div className="space-y-6">
+    <ProtectedRoute>
+      <DashboardLayout>
+        <div className="space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
@@ -283,6 +287,8 @@ export default function WorkoutsPage() {
           onPageChange={setCurrentPage}
         />
       </Card>
-    </div>
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }

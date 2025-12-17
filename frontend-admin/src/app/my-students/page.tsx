@@ -85,27 +85,18 @@ export default function MyStudentsPage() {
       });
 
       if (!response.ok) {
-        console.error('Response not OK:', response.status, response.statusText);
         const errorText = await response.text();
-        console.error('Error response:', errorText);
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log('Fetched my students - Full response:', data);
-      console.log('Items:', data.data?.items);
-      console.log('Stats:', data.data?.stats);
 
       const items = data.data?.items || [];
       const stats = data.data?.stats || { total: 0, active: 0, avgWorkoutsPerWeek: 0 };
 
-      console.log('Setting students:', items);
-      console.log('Setting stats:', stats);
-
       setStudents(items);
       setStats(stats);
     } catch (error) {
-      console.error('Failed to fetch students:', error);
       toast.error('Öğrenciler yüklenemedi: ' + (error instanceof Error ? error.message : 'Bilinmeyen hata'));
     } finally {
       setLoading(false);
@@ -194,18 +185,15 @@ export default function MyStudentsPage() {
 
     setIsAddingStudent(true);
     try {
-      console.log('Adding student:', { trainerId: user!.id, studentId: selectedStudentId });
       const result = await apiClient.createTrainerMatch({
         trainerId: user!.id,
         studentId: selectedStudentId,
       });
-      console.log('Student added successfully:', result);
       toast.success('Öğrenci başarıyla eklendi!');
       setIsAddStudentModalOpen(false);
       setSelectedStudentId('');
       fetchMyStudents();
     } catch (error) {
-      console.error('Failed to add student:', error);
       toast.error('Öğrenci eklenemedi: ' + (error instanceof Error ? error.message : 'Bilinmeyen hata'));
     } finally {
       setIsAddingStudent(false);
@@ -367,8 +355,9 @@ export default function MyStudentsPage() {
                             ? 'bg-green-100 text-green-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}
+                        title={student.isActive ? 'Son 7 günde antrenman yaptı' : 'Son 7 günde antrenman yapmadı'}
                       >
-                        {student.isActive ? '🟢 Aktif' : '🔴 Pasif'}
+                        {student.isActive ? '🟢 Aktif' : '⚪ Pasif'}
                       </span>
                     </div>
 

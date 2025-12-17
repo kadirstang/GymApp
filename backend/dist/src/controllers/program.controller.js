@@ -2,11 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getProgramStats = exports.cloneProgram = exports.deleteProgram = exports.updateProgram = exports.createProgram = exports.getProgramById = exports.getPrograms = void 0;
 const client_1 = require("@prisma/client");
-const response_js_1 = require("../utils/response.js");
+const response_1 = require("../utils/response");
 const prisma = new client_1.PrismaClient();
 const getPrograms = async (req, res) => {
     try {
-        const { gymId } = req.user;
+        const { gymId, userId } = req.user;
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 20;
         const skip = (page - 1) * limit;
@@ -17,6 +17,10 @@ const getPrograms = async (req, res) => {
         const where = {
             gymId,
             deletedAt: null,
+            OR: [
+                { creatorId: userId },
+                { isPublic: true }
+            ]
         };
         if (search) {
             where.OR = [
@@ -66,8 +70,8 @@ const getPrograms = async (req, res) => {
             }),
             prisma.workoutProgram.count({ where }),
         ]);
-        return (0, response_js_1.successResponse)(res, {
-            programs,
+        return (0, response_1.successResponse)(res, {
+            items: programs,
             pagination: {
                 total,
                 page,
@@ -78,7 +82,7 @@ const getPrograms = async (req, res) => {
     }
     catch (error) {
         console.error('Get programs error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to retrieve programs', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to retrieve programs', 500);
     }
 };
 exports.getPrograms = getPrograms;
@@ -132,20 +136,20 @@ const getProgramById = async (req, res) => {
             },
         });
         if (!program) {
-            return (0, response_js_1.errorResponse)(res, 'Program not found', 404);
+            return (0, response_1.errorResponse)(res, 'Program not found', 404);
         }
-        return (0, response_js_1.successResponse)(res, program);
+        return (0, response_1.successResponse)(res, program);
     }
     catch (error) {
         console.error('Get program by ID error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to retrieve program', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to retrieve program', 500);
     }
 };
 exports.getProgramById = getProgramById;
 const createProgram = async (req, res) => {
     try {
         const { gymId, userId } = req.user;
-        const { name, description, difficultyLevel, assignedUserId } = req.body;
+        const { name, description, difficultyLevel, assignedUserId, isPublic } = req.body;
         if (assignedUserId) {
             const assignedUser = await prisma.user.findFirst({
                 where: {
@@ -155,7 +159,7 @@ const createProgram = async (req, res) => {
                 },
             });
             if (!assignedUser) {
-                return (0, response_js_1.errorResponse)(res, 'Assigned user not found in your gym', 404);
+                return (0, response_1.errorResponse)(res, 'Assigned user not found in your gym', 404);
             }
         }
         const program = await prisma.workoutProgram.create({
@@ -166,6 +170,7 @@ const createProgram = async (req, res) => {
                 description,
                 difficultyLevel: difficultyLevel || 'Beginner',
                 assignedUserId: assignedUserId || null,
+                isPublic: isPublic || false,
             },
             include: {
                 creator: {
@@ -186,11 +191,11 @@ const createProgram = async (req, res) => {
                 },
             },
         });
-        return (0, response_js_1.successResponse)(res, program, 'Program created successfully', 201);
+        return (0, response_1.successResponse)(res, program, 'Program created successfully', 201);
     }
     catch (error) {
         console.error('Create program error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to create program', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to create program', 500);
     }
 };
 exports.createProgram = createProgram;
@@ -198,7 +203,7 @@ const updateProgram = async (req, res) => {
     try {
         const { gymId } = req.user;
         const { id } = req.params;
-        const { name, description, difficultyLevel, assignedUserId } = req.body;
+        const { name, description, difficultyLevel, assignedUserId, isPublic } = req.body;
         const existingProgram = await prisma.workoutProgram.findFirst({
             where: {
                 id,
@@ -207,7 +212,7 @@ const updateProgram = async (req, res) => {
             },
         });
         if (!existingProgram) {
-            return (0, response_js_1.errorResponse)(res, 'Program not found', 404);
+            return (0, response_1.errorResponse)(res, 'Program not found', 404);
         }
         if (assignedUserId !== undefined) {
             if (assignedUserId !== null) {
@@ -219,7 +224,7 @@ const updateProgram = async (req, res) => {
                     },
                 });
                 if (!assignedUser) {
-                    return (0, response_js_1.errorResponse)(res, 'Assigned user not found in your gym', 404);
+                    return (0, response_1.errorResponse)(res, 'Assigned user not found in your gym', 404);
                 }
             }
         }
@@ -232,6 +237,8 @@ const updateProgram = async (req, res) => {
             updateData.difficultyLevel = difficultyLevel;
         if (assignedUserId !== undefined)
             updateData.assignedUserId = assignedUserId;
+        if (isPublic !== undefined)
+            updateData.isPublic = isPublic;
         const program = await prisma.workoutProgram.update({
             where: { id },
             data: updateData,
@@ -254,11 +261,11 @@ const updateProgram = async (req, res) => {
                 },
             },
         });
-        return (0, response_js_1.successResponse)(res, program, 'Program updated successfully');
+        return (0, response_1.successResponse)(res, program, 'Program updated successfully');
     }
     catch (error) {
         console.error('Update program error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to update program', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to update program', 500);
     }
 };
 exports.updateProgram = updateProgram;
@@ -274,17 +281,17 @@ const deleteProgram = async (req, res) => {
             },
         });
         if (!program) {
-            return (0, response_js_1.errorResponse)(res, 'Program not found', 404);
+            return (0, response_1.errorResponse)(res, 'Program not found', 404);
         }
         await prisma.workoutProgram.update({
             where: { id },
             data: { deletedAt: new Date() },
         });
-        return (0, response_js_1.successResponse)(res, null, 'Program deleted successfully');
+        return (0, response_1.successResponse)(res, null, 'Program deleted successfully');
     }
     catch (error) {
         console.error('Delete program error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to delete program', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to delete program', 500);
     }
 };
 exports.deleteProgram = deleteProgram;
@@ -307,7 +314,7 @@ const cloneProgram = async (req, res) => {
             },
         });
         if (!sourceProgram) {
-            return (0, response_js_1.errorResponse)(res, 'Source program not found', 404);
+            return (0, response_1.errorResponse)(res, 'Source program not found', 404);
         }
         if (assignedUserId) {
             const assignedUser = await prisma.user.findFirst({
@@ -318,7 +325,7 @@ const cloneProgram = async (req, res) => {
                 },
             });
             if (!assignedUser) {
-                return (0, response_js_1.errorResponse)(res, 'Assigned user not found in your gym', 404);
+                return (0, response_1.errorResponse)(res, 'Assigned user not found in your gym', 404);
             }
         }
         const newProgram = await prisma.workoutProgram.create({
@@ -371,11 +378,11 @@ const cloneProgram = async (req, res) => {
                 },
             },
         });
-        return (0, response_js_1.successResponse)(res, newProgram, 'Program cloned successfully', 201);
+        return (0, response_1.successResponse)(res, newProgram, 'Program cloned successfully', 201);
     }
     catch (error) {
         console.error('Clone program error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to clone program', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to clone program', 500);
     }
 };
 exports.cloneProgram = cloneProgram;
@@ -402,7 +409,7 @@ const getProgramStats = async (req, res) => {
             acc[item.difficultyLevel] = item._count;
             return acc;
         }, {});
-        return (0, response_js_1.successResponse)(res, {
+        return (0, response_1.successResponse)(res, {
             totalPrograms: total,
             assignedPrograms: assigned,
             unassignedPrograms: unassigned,
@@ -411,7 +418,7 @@ const getProgramStats = async (req, res) => {
     }
     catch (error) {
         console.error('Get program stats error:', error);
-        return (0, response_js_1.errorResponse)(res, 'Failed to retrieve program statistics', 500);
+        return (0, response_1.errorResponse)(res, 'Failed to retrieve program statistics', 500);
     }
 };
 exports.getProgramStats = getProgramStats;

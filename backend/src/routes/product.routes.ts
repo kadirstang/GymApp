@@ -3,6 +3,7 @@ import { body, param, query } from 'express-validator';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/rbac.middleware';
 import { handleValidationErrors } from '../middleware/validation.middleware';
+import { productImageUpload } from '../middleware/upload.middleware';
 import {
   getProducts,
   getProductById,
@@ -12,6 +13,7 @@ import {
   updateStock,
   toggleActivation,
   getProductStats,
+  uploadProductImage,
 } from '../controllers/product.controller';
 
 const router = express.Router();
@@ -113,7 +115,7 @@ router.post(
       .isLength({ max: 2000 })
       .withMessage('Description must be at most 2000 characters'),
     body('imageUrl')
-      .optional()
+      .optional({ values: 'falsy' })
       .isString()
       .trim()
       .isURL()
@@ -165,7 +167,7 @@ router.put(
       .isLength({ max: 2000 })
       .withMessage('Description must be at most 2000 characters'),
     body('imageUrl')
-      .optional()
+      .optional({ values: 'falsy' })
       .isString()
       .trim()
       .isURL()
@@ -239,6 +241,24 @@ router.delete(
     handleValidationErrors,
   ],
   deleteProduct
+);
+
+/**
+ * @route   POST /api/products/:id/image
+ * @desc    Upload product image
+ * @access  Private (products.update)
+ */
+router.post(
+  '/:id/image',
+  requirePermission('products.update'),
+  [
+    param('id')
+      .isUUID()
+      .withMessage('Product ID must be a valid UUID'),
+    handleValidationErrors,
+  ],
+  productImageUpload.single('image'),
+  uploadProductImage
 );
 
 export default router;

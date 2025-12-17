@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getExerciseStats = exports.getMuscleGroups = exports.deleteExercise = exports.updateExercise = exports.createExercise = exports.getExerciseById = exports.getExercises = void 0;
+exports.uploadExerciseVideo = exports.getExerciseStats = exports.getMuscleGroups = exports.deleteExercise = exports.updateExercise = exports.createExercise = exports.getExerciseById = exports.getExercises = void 0;
 const client_1 = require("@prisma/client");
 const response_js_1 = require("../utils/response.js");
+const upload_middleware_1 = require("../middleware/upload.middleware");
 const prisma = new client_1.PrismaClient();
 const getExercises = async (req, res) => {
     try {
@@ -42,13 +43,20 @@ const getExercises = async (req, res) => {
                             name: true,
                             status: true
                         }
+                    },
+                    creator: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true
+                        }
                     }
                 }
             }),
             prisma.exercise.count({ where })
         ]);
         return (0, response_js_1.successResponse)(res, {
-            exercises,
+            items: exercises,
             pagination: {
                 total,
                 page,
@@ -103,7 +111,7 @@ const getExerciseById = async (req, res) => {
 exports.getExerciseById = getExerciseById;
 const createExercise = async (req, res) => {
     try {
-        const { gymId } = req.user;
+        const { gymId, userId } = req.user;
         const { name, description, videoUrl, targetMuscleGroup, equipmentNeededId } = req.body;
         if (equipmentNeededId) {
             const equipment = await prisma.equipment.findFirst({
@@ -130,6 +138,7 @@ const createExercise = async (req, res) => {
         const exercise = await prisma.exercise.create({
             data: {
                 gymId,
+                createdBy: userId,
                 name,
                 description,
                 videoUrl,
@@ -156,7 +165,7 @@ const createExercise = async (req, res) => {
 exports.createExercise = createExercise;
 const updateExercise = async (req, res) => {
     try {
-        const { gymId } = req.user;
+        const { gymId, userId, role } = req.user;
         const { id } = req.params;
         const { name, description, videoUrl, targetMuscleGroup, equipmentNeededId } = req.body;
         const existingExercise = await prisma.exercise.findFirst({
@@ -168,6 +177,9 @@ const updateExercise = async (req, res) => {
         });
         if (!existingExercise) {
             return (0, response_js_1.errorResponse)(res, 'Exercise not found', 404);
+        }
+        if (role.name === 'Trainer' && existingExercise.createdBy !== userId) {
+            return (0, response_js_1.errorResponse)(res, 'You can only edit exercises created by you', 403);
         }
         if (equipmentNeededId) {
             const equipment = await prisma.equipment.findFirst({
@@ -223,27 +235,32 @@ const updateExercise = async (req, res) => {
 exports.updateExercise = updateExercise;
 const deleteExercise = async (req, res) => {
     try {
-        const { gymId } = req.user;
+        const { gymId, userId, role } = req.user;
         const { id } = req.params;
         const exercise = await prisma.exercise.findFirst({
             where: {
                 id,
                 gymId,
                 deletedAt: null
-            },
-            include: {
-                _count: {
-                    select: {
-                        programExercises: true
-                    }
-                }
             }
         });
         if (!exercise) {
             return (0, response_js_1.errorResponse)(res, 'Exercise not found', 404);
         }
-        if (exercise._count.programExercises > 0) {
-            return (0, response_js_1.errorResponse)(res, `Cannot delete exercise. It is used in ${exercise._count.programExercises} workout program(s)`, 400);
+        if (role.name === 'Trainer' && exercise.createdBy !== userId) {
+            return (0, response_js_1.errorResponse)(res, 'You can only delete exercises created by you', 403);
+        }
+        const activeProgramExercises = await prisma.programExercise.count({
+            where: {
+                exerciseId: id,
+                deletedAt: null,
+                program: {
+                    deletedAt: null
+                }
+            }
+        });
+        if (activeProgramExercises > 0) {
+            return (0, response_js_1.errorResponse)(res, `Cannot delete exercise. It is used in ${activeProgramExercises} active workout program(s)`, 400);
         }
         await prisma.exercise.update({
             where: { id },
@@ -330,4 +347,45 @@ const getExerciseStats = async (req, res) => {
     }
 };
 exports.getExerciseStats = getExerciseStats;
+const uploadExerciseVideo = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { gymId } = req.user;
+        if (!req.file) {
+            return (0, response_js_1.errorResponse)(res, 'No file uploaded', 400);
+        }
+        const exercise = await prisma.exercise.findFirst({
+            where: { id, gymId, deletedAt: null }
+        });
+        if (!exercise) {
+            return (0, response_js_1.errorResponse)(res, 'Exercise not found', 404);
+        }
+        if (exercise.videoUrl) {
+            (0, upload_middleware_1.deleteExerciseVideo)(exercise.videoUrl);
+        }
+        const videoUrl = `/uploads/exercise-videos/${req.file.filename}`;
+        const updatedExercise = await prisma.exercise.update({
+            where: { id },
+            data: { videoUrl },
+            include: {
+                equipment: {
+                    select: {
+                        id: true,
+                        name: true,
+                        status: true
+                    }
+                }
+            }
+        });
+        return (0, response_js_1.successResponse)(res, updatedExercise, 'Exercise video uploaded successfully');
+    }
+    catch (error) {
+        if (req.file) {
+            (0, upload_middleware_1.deleteExerciseVideo)(`/uploads/exercise-videos/${req.file.filename}`);
+        }
+        console.error('Upload exercise video error:', error);
+        return (0, response_js_1.errorResponse)(res, error.message, 500);
+    }
+};
+exports.uploadExerciseVideo = uploadExerciseVideo;
 //# sourceMappingURL=exercise.controller.js.map

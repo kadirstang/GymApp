@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Search, Pencil, Trash2, Dumbbell } from 'lucide-react';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import DashboardLayout from '@/components/DashboardLayout';
 import { apiClient } from '@/lib/api-client';
 import { Exercise, Equipment } from '@/types/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/contexts/ToastContext';
-import { Button, Input, Modal, Table, Card, Select, Textarea } from '@/components/ui';
+import { Button, Input, Modal, Table, Card, Select, Textarea, ConfirmDialog } from '@/components/ui';
+import { FileUpload } from '@/components/ui/FileUpload';
 import type { Column } from '@/components/ui';
 
 interface ExerciseFormData {
@@ -38,10 +41,12 @@ export default function ExercisesPage() {
   const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
-  const [deletingExercise, setDeletingExercise] = useState<Exercise | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; exercise: Exercise | null }>({ isOpen: false, exercise: null });
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
 
   const isOwner = user?.role?.name === 'GymOwner';
 
@@ -142,6 +147,31 @@ export default function ExercisesPage() {
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setEditingExercise(null);
+    setVideoFile(null);
+  };
+
+  const handleVideoUpload = async (file: File): Promise<string> => {
+    if (!editingExercise) {
+      // If creating new exercise, just store the file for later
+      return URL.createObjectURL(file);
+    }
+
+    // If editing existing exercise, upload immediately
+    try {
+      setUploadingVideo(true);
+      const response = await apiClient.uploadExerciseVideo(editingExercise.id, file);
+      if (response.data?.videoUrl) {
+        toast.success('Video başarıyla yüklendi');
+        return `http://localhost:3001${response.data.videoUrl}`;
+      }
+      throw new Error('Video URL alınamadı');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Video yükleme başarısız';
+      toast.error(message);
+      throw error;
+    } finally {
+      setUploadingVideo(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -157,13 +187,28 @@ export default function ExercisesPage() {
         equipmentNeededId: formData.equipmentNeededId || undefined,
       };
 
+      let exerciseId = editingExercise?.id;
+
       if (editingExercise) {
         await apiClient.updateExercise(editingExercise.id, requestData);
         toast.success('Egzersiz başarıyla güncellendi');
       } else {
-        await apiClient.createExercise(requestData);
+        const response = await apiClient.createExercise(requestData);
+        exerciseId = response.data?.id;
         toast.success('Egzersiz başarıyla oluşturuldu');
       }
+
+      // Upload video if file was selected and exercise was created
+      if (videoFile && exerciseId && !editingExercise) {
+        try {
+          await apiClient.uploadExerciseVideo(exerciseId, videoFile);
+          toast.success('Video başarıyla yüklendi');
+        } catch (error) {
+          console.error('Video upload failed:', error);
+          toast.warning('Egzersiz oluşturuldu ancak video yüklenemedi');
+        }
+      }
+
       await fetchExercises();
       handleCloseModal();
     } catch (error: unknown) {
@@ -174,23 +219,24 @@ export default function ExercisesPage() {
     }
   };
 
-  const handleOpenDeleteModal = (exercise: Exercise) => {
-    setDeletingExercise(exercise);
-    setIsDeleteModalOpen(true);
+  const handleDeleteClick = (exercise: Exercise) => {
+    setDeleteDialog({ isOpen: true, exercise });
   };
 
-  const handleDelete = async () => {
-    if (!deletingExercise) return;
+  const handleDeleteConfirm = async () => {
+    if (!deleteDialog.exercise) return;
 
+    setIsDeleting(true);
     try {
-      await apiClient.deleteExercise(deletingExercise.id);
+      await apiClient.deleteExercise(deleteDialog.exercise.id);
       toast.success('Egzersiz başarıyla silindi');
-      setIsDeleteModalOpen(false);
-      setDeletingExercise(null);
       fetchExercises();
+      setDeleteDialog({ isOpen: false, exercise: null });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Silme işlemi sırasında hata oluştu';
       toast.error(message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -238,7 +284,7 @@ export default function ExercisesPage() {
               <Button
                 size="sm"
                 variant="danger"
-                onClick={() => handleOpenDeleteModal(row)}
+                onClick={() => handleDeleteClick(row)}
                 leftIcon={<Trash2 size={16} />}
               >
                 Sil
@@ -251,7 +297,9 @@ export default function ExercisesPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <ProtectedRoute>
+      <DashboardLayout>
+        <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -333,12 +381,15 @@ export default function ExercisesPage() {
             onChange={(e) => setFormData({ ...formData, description: e.target.value })}
             rows={3}
           />
-          <Input
-            label="Video URL"
-            type="url"
-            value={formData.videoUrl}
-            onChange={(e) => setFormData({ ...formData, videoUrl: e.target.value })}
-            placeholder="https://youtube.com/watch?v=..."
+          <FileUpload
+            label="Egzersiz Videosu/Görseli"
+            accept="video/*,image/*"
+            maxSize={50 * 1024 * 1024}
+            value={formData.videoUrl ? `http://localhost:3001${formData.videoUrl}` : null}
+            onChange={(file) => setVideoFile(file)}
+            onUpload={editingExercise ? handleVideoUpload : undefined}
+            preview={true}
+            helperText="Video (MP4, WebM, MOV) veya görsel (PNG, JPG, GIF) yükleyebilirsiniz. Maksimum 50MB."
           />
           <Select
             label="Kas Grubu"
@@ -360,27 +411,20 @@ export default function ExercisesPage() {
         </form>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
-      <Modal
-        isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+      {/* Delete Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteDialog.isOpen}
+        onClose={() => setDeleteDialog({ isOpen: false, exercise: null })}
+        onConfirm={handleDeleteConfirm}
         title="Egzersizi Sil"
-        size="sm"
-        footer={
-          <div className="flex items-center justify-end gap-3">
-            <Button variant="secondary" onClick={() => setIsDeleteModalOpen(false)}>
-              İptal
-            </Button>
-            <Button variant="danger" onClick={handleDelete}>
-              Sil
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-gray-700">
-          <strong>{deletingExercise?.name}</strong> egzersizini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-        </p>
-      </Modal>
-    </div>
+        message={`"${deleteDialog.exercise?.name}" egzersizini silmek istediğinize emin misiniz? Bu işlem geri alınamaz.`}
+        confirmText="Sil"
+        cancelText="İptal"
+        variant="danger"
+        isLoading={isDeleting}
+      />
+        </div>
+      </DashboardLayout>
+    </ProtectedRoute>
   );
 }

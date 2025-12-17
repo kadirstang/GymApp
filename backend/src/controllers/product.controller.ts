@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { successResponse, errorResponse } from '../utils/response';
+import { deleteProductImage } from '../middleware/upload.middleware';
 
 const prisma = new PrismaClient();
 
@@ -437,5 +438,61 @@ export const getProductStats = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get product stats error:', error);
     return errorResponse(res, 'Failed to retrieve product statistics', 500);
+  }
+};
+
+/**
+ * Upload product image
+ * POST /api/products/:id/image
+ */
+export const uploadProductImage = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { gymId } = req.user!;
+
+    // Check if file was uploaded
+    if (!req.file) {
+      return errorResponse(res, 'No file uploaded', 400);
+    }
+
+    // Verify product exists and belongs to gym
+    const product = await prisma.product.findFirst({
+      where: { id, gymId, deletedAt: null },
+    });
+
+    if (!product) {
+      return errorResponse(res, 'Product not found', 404);
+    }
+
+    // Delete old image if exists
+    if (product.imageUrl) {
+      deleteProductImage(product.imageUrl);
+    }
+
+    // Generate image URL
+    const imageUrl = `/uploads/product-images/${req.file.filename}`;
+
+    // Update product with new image URL
+    const updatedProduct = await prisma.product.update({
+      where: { id },
+      data: { imageUrl },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return successResponse(res, updatedProduct, 'Product image uploaded successfully');
+  } catch (error: any) {
+    // If error occurs, delete the uploaded file
+    if (req.file) {
+      deleteProductImage(`/uploads/product-images/${req.file.filename}`);
+    }
+    console.error('Upload product image error:', error);
+    return errorResponse(res, 'Failed to upload product image', 500);
   }
 };

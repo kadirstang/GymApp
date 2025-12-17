@@ -73,6 +73,14 @@ export const getPrograms = async (req: Request, res: Response) => {
               email: true,
             },
           },
+          programExercises: {
+            orderBy: {
+              orderIndex: 'asc',
+            },
+            include: {
+              exercise: true,
+            },
+          },
           _count: {
             select: {
               programExercises: true,

@@ -19,6 +19,7 @@ const authenticate = async (req, _res, next) => {
             email: payload.email,
             gymId: payload.gymId,
             roleId: payload.roleId,
+            role: payload.role,
         };
         next();
     }
@@ -39,6 +40,7 @@ const optionalAuth = async (req, _res, next) => {
                     email: payload.email,
                     gymId: payload.gymId,
                     roleId: payload.roleId,
+                    role: payload.role,
                 };
             }
         }

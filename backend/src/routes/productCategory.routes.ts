@@ -72,7 +72,7 @@ router.post(
       .isLength({ max: 100 })
       .withMessage('Name must be at most 100 characters'),
     body('imageUrl')
-      .optional()
+      .optional({ values: 'falsy' })
       .isString()
       .trim()
       .isURL()
@@ -103,7 +103,7 @@ router.put(
       .isLength({ max: 100 })
       .withMessage('Name must be at most 100 characters'),
     body('imageUrl')
-      .optional()
+      .optional({ values: 'falsy' })
       .isString()
       .trim()
       .isURL()

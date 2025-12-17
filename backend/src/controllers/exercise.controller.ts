@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { successResponse, errorResponse } from '../utils/response.js';
+import { deleteExerciseVideo } from '../middleware/upload.middleware';
 
 const prisma = new PrismaClient();
 
@@ -426,6 +427,63 @@ export const getExerciseStats = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Get exercise stats error:', error);
+    return errorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Upload exercise video/image
+ * POST /api/exercises/:id/video
+ */
+export const uploadExerciseVideo = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { gymId } = req.user!;
+
+    // Check if file was uploaded
+    if (!req.file) {
+      return errorResponse(res, 'No file uploaded', 400);
+    }
+
+    // Verify exercise exists and belongs to gym
+    const exercise = await prisma.exercise.findFirst({
+      where: { id, gymId, deletedAt: null }
+    });
+
+    if (!exercise) {
+      return errorResponse(res, 'Exercise not found', 404);
+    }
+
+    // Delete old video if exists
+    if (exercise.videoUrl) {
+      deleteExerciseVideo(exercise.videoUrl);
+    }
+
+    // Generate video URL
+    const videoUrl = `/uploads/exercise-videos/${req.file.filename}`;
+
+    // Update exercise with new video URL
+    const updatedExercise = await prisma.exercise.update({
+      where: { id },
+      data: { videoUrl },
+      include: {
+        equipment: {
+          select: {
+            id: true,
+            name: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    return successResponse(res, updatedExercise, 'Exercise video uploaded successfully');
+  } catch (error: any) {
+    // If error occurs, delete the uploaded file
+    if (req.file) {
+      deleteExerciseVideo(`/uploads/exercise-videos/${req.file.filename}`);
+    }
+    console.error('Upload exercise video error:', error);
     return errorResponse(res, error.message, 500);
   }
 };

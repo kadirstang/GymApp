@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const warning = useCallback((message: string) => showToast('warning', message), [showToast]);
 
   const getToastStyles = (type: ToastType) => {
-    const styles = {
+    const styleMap = {
       success: {
         bg: 'bg-green-50',
         border: 'border-green-200',
@@ -71,8 +71,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         icon: <Info className="w-5 h-5 text-blue-600" />,
         iconBg: 'bg-blue-100',
       },
-    };
-    return styles[type];
+    } as const;
+    return styleMap[type];
   };
 
   return (
@@ -83,6 +83,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full">
         {toasts.map((toast) => {
           const styles = getToastStyles(toast.type);
+          if (!styles) return null;
+
           return (
             <div
               key={toast.id}

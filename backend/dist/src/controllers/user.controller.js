@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteUserMeasurement = exports.updateUserMeasurement = exports.addUserMeasurement = exports.getUserMeasurements = exports.deleteUser = exports.changePassword = exports.updateUser = exports.getUserById = exports.getUsers = void 0;
+exports.deleteUserMeasurement = exports.updateUserMeasurement = exports.addUserMeasurement = exports.getUserMeasurements = exports.deleteUser = exports.updateCustomPermissions = exports.changePassword = exports.updateUser = exports.getUserById = exports.getUsers = void 0;
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const response_1 = require("../utils/response");
@@ -55,16 +55,31 @@ const getUsers = async (req, _res, next) => {
                             name: true,
                         },
                     },
+                    trainerMatchesAsStudent: {
+                        where: {
+                            status: 'active',
+                            deletedAt: null,
+                        },
+                        select: { id: true },
+                    },
                 },
                 orderBy: { createdAt: 'desc' },
             }),
             prisma.user.count({ where }),
         ]);
-        (0, response_1.paginatedResponse)(_res, users, {
-            page: pageNum,
-            limit: limitNum,
-            total,
-            totalPages: Math.ceil(total / limitNum),
+        const usersWithBadge = users.map(user => ({
+            ...user,
+            hasPrivateTraining: user.trainerMatchesAsStudent.length > 0,
+            trainerMatchesAsStudent: undefined,
+        }));
+        return (0, response_1.successResponse)(_res, {
+            items: usersWithBadge,
+            pagination: {
+                page: pageNum,
+                limit: limitNum,
+                total,
+                totalPages: Math.ceil(total / limitNum),
+            }
         });
     }
     catch (error) {
@@ -226,6 +241,54 @@ const changePassword = async (req, _res, next) => {
     }
 };
 exports.changePassword = changePassword;
+const updateCustomPermissions = async (req, _res, next) => {
+    try {
+        const { id } = req.params;
+        const { customPermissions } = req.body;
+        const gymId = req.user?.gymId;
+        if (!customPermissions || typeof customPermissions !== 'object') {
+            throw new errors_1.ValidationError('Custom permissions must be an object');
+        }
+        const targetUser = await prisma.user.findFirst({
+            where: {
+                id,
+                gymId,
+                deletedAt: null,
+            },
+            include: {
+                role: true,
+            },
+        });
+        if (!targetUser) {
+            throw new errors_1.NotFoundError('User not found');
+        }
+        if (targetUser.role.name !== 'Trainer') {
+            throw new errors_1.ValidationError('Custom permissions can only be set for Trainers');
+        }
+        const updatedUser = await prisma.user.update({
+            where: { id },
+            data: { customPermissions },
+            select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                customPermissions: true,
+                role: {
+                    select: {
+                        name: true,
+                        permissions: true,
+                    },
+                },
+            },
+        });
+        (0, response_1.successResponse)(_res, updatedUser, 'Custom permissions updated successfully');
+    }
+    catch (error) {
+        next(error);
+    }
+};
+exports.updateCustomPermissions = updateCustomPermissions;
 const deleteUser = async (req, _res, next) => {
     try {
         const { id } = req.params;
